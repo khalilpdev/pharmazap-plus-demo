@@ -1,0 +1,133 @@
+﻿@using Microsoft.AspNetCore.SignalR.Client
+@inject IPharmazapApiService PharmazapApiService
+@inject ILogger<MessageQueue> Logger
+@implements IAsyncDisposable
+
+<FluentCard Style="padding: 1rem;">
+    <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+            <FluentIcon Icon="@(Icons.Regular.Size20.Database)" Color="Color.Accent" />
+            <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Fila Redis</FluentLabel>
+            <FluentButton Appearance="Appearance.Stealth" @onclick="RefreshStats" Title="Atualizar">
+                <FluentIcon Icon="@(Icons.Regular.Size16.ArrowSync)" />
+            </FluentButton>
+        </FluentStack>
+
+        @if (_isLoading)
+        {
+            <FluentProgressRing Style="align-self: center;" />
+        }
+        else if (_stats == null)
+        {
+            <FluentLabel Color="Color.Lightweight">Não foi possível obter estatísticas da fila.</FluentLabel>
+        }
+        else
+        {
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                             HorizontalGap="8" Style="justify-content: space-between;">
+                    <FluentLabel>Novas Mensagens</FluentLabel>
+                    <FluentBadge Appearance="@(_stats.NovasMensagens > 0 ? Appearance.Accent : Appearance.Neutral)">
+                        @_stats.NovasMensagens
+                    </FluentBadge>
+                </FluentStack>
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                             HorizontalGap="8" Style="justify-content: space-between;">
+                    <FluentLabel>Notificações</FluentLabel>
+                    <FluentBadge Appearance="@(_stats.Notificacoes > 0 ? Appearance.Accent : Appearance.Neutral)">
+                        @_stats.Notificacoes
+                    </FluentBadge>
+                </FluentStack>
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                             HorizontalGap="8" Style="justify-content: space-between;">
+                    <FluentLabel>Agendamentos</FluentLabel>
+                    <FluentBadge Appearance="@(_stats.Agendamentos > 0 ? Appearance.Accent : Appearance.Neutral)">
+                        @_stats.Agendamentos
+                    </FluentBadge>
+                </FluentStack>
+            </FluentStack>
+
+            <FluentLabel Color="Color.Lightweight" Style="font-size: 0.75rem;">
+                Atualizado: @ToBrazilTime(_stats.Timestamp).ToString("HH:mm:ss")
+            </FluentLabel>
+        }
+    </FluentStack>
+</FluentCard>
+
+@code {
+    private QueueStats? _stats;
+    private bool _isLoading = true;
+    private Timer? _refreshTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStats();
+
+        _refreshTimer = new Timer(async _ =>
+        {
+            try
+            {
+                await LoadStats();
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "MessageQueue: erro no refresh automático das filas");
+            }
+        }, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+    }
+
+    private async Task LoadStats()
+    {
+        try
+        {
+            Logger.LogInformation("MessageQueue: consultando estatísticas das filas Redis");
+            _stats = await PharmazapApiService.GetQueueStatsAsync();
+            Logger.LogInformation("MessageQueue: NovasMensagens={NovasMensagens}, Notificacoes={Notificacoes}, Agendamentos={Agendamentos}",
+                _stats?.NovasMensagens, _stats?.Notificacoes, _stats?.Agendamentos);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "MessageQueue: erro ao consultar estatísticas das filas");
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task RefreshStats()
+    {
+        _isLoading = true;
+        StateHasChanged();
+        await LoadStats();
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_refreshTimer is not null)
+        {
+            await _refreshTimer.DisposeAsync();
+        }
+    }
+
+    private static readonly TimeZoneInfo BrazilTimeZone = ResolveBrazilTimeZone();
+
+    private static TimeZoneInfo ResolveBrazilTimeZone()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time"); }
+        catch (TimeZoneNotFoundException) { return TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo"); }
+    }
+
+    private static DateTime ToBrazilTime(DateTime dateTime)
+    {
+        var utc = dateTime.Kind switch
+        {
+            DateTimeKind.Utc => dateTime,
+            DateTimeKind.Local => dateTime.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)
+        };
+        return TimeZoneInfo.ConvertTimeFromUtc(utc, BrazilTimeZone);
+    }
+}

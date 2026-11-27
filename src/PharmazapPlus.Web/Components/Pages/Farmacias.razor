@@ -1,0 +1,453 @@
+@page "/farmacias"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = UserRoles.Gestor)]
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<Farmacias> Logger
+@inject IPharmazapApiService PharmazapApiService
+@inject IToastService ToastService
+
+<PageTitle>Farmácias - Pharmazap Plus</PageTitle>
+
+<div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+    @if (CurrentUser != null)
+    {
+        <div style="flex-shrink: 0; width: 100%;">
+            <FluentCard Style="padding: 1rem 2rem; border-radius: 0; width: 100%;">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="12" Style="flex: 1; min-width: 0;">
+                        <FluentIcon Icon="@(Icons.Regular.Size32.Building)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="min-width: 0;">
+                            <FluentLabel Typo="Typography.PageTitle" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Gerenciamento de Farmácias</FluentLabel>
+                            <FluentLabel Typo="Typography.Body">Gerencie as farmácias cadastradas no sistema</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="margin-left: auto; flex-shrink: 0; padding-left: 1rem; width: auto;">
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovaFarmacia">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Color="Color.Fill" Slot="start" />
+                            Nova Farmácia
+                        </FluentButton>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+        </div>
+
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 10; overflow: visible;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8"
+                             VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+                    <FluentTextField @bind-Value="@SearchQuery"
+                                    Placeholder="Buscar por nome ou CNPJ..."
+                                    Style="flex: 1;"
+                                    Autocomplete="off"
+                                    @onkeydown="HandleSearchKeyDown">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Search)" Slot="start" />
+                    </FluentTextField>
+
+                    <FluentSelect TOption="string"
+                                 @bind-Value="@FilterPlano"
+                                 Style="min-width: 180px; position: relative; z-index: 10; overflow: visible;">
+                        <FluentOption TOption="string" Value="all">Todos os planos</FluentOption>
+                        <FluentOption TOption="string" Value="Basic">Basic</FluentOption>
+                        <FluentOption TOption="string" Value="Standard">Standard</FluentOption>
+                        <FluentOption TOption="string" Value="Premium">Premium</FluentOption>
+                    </FluentSelect>
+
+                    <FluentButton Appearance="Appearance.Outline" @onclick="ClearFilters">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" Slot="start" />
+                        Limpar
+                    </FluentButton>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="32" Wrap="true">
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.Building)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--accent-fill-rest);">@TotalFarmacias</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Total de Farmácias</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.People)" Color="Color.Success" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusSuccessForeground3);">@TotalAtendentes</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Total de Atendentes</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.PersonAvailable)" Color="Color.Warning" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusWarningForeground3);">@TotalAdministradores</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Total de Administradores</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                @if (IsLoading)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12" Style="padding: 3rem;">
+                        <FluentProgressRing />
+                        <FluentLabel>Carregando farmácias...</FluentLabel>
+                    </FluentStack>
+                }
+                else if (!FarmaciasFiltradas.Any())
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12"
+                                 Style="padding: 4rem; text-align: center;">
+                        <FluentIcon Icon="@(Icons.Regular.Size48.Building)" Color="Color.Lightweight" />
+                        <FluentLabel Typo="Typography.Subject">Nenhuma farmácia encontrada</FluentLabel>
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Registre farmácias para gerenciá-las aqui</FluentLabel>
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovaFarmacia">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Color="Color.Fill" Slot="start" />
+                            Registrar Primeira Farmácia
+                        </FluentButton>
+                    </FluentStack>
+                }
+                else
+                {
+                    <div style="width: 100%; overflow-x: auto;">
+                        <FluentDataGrid Items="@FarmaciasFiltradas"
+                                        GridTemplateColumns="minmax(120px,auto) minmax(220px,auto) minmax(150px,auto) minmax(110px,auto) minmax(100px,auto) minmax(100px,auto) minmax(90px,auto)"
+                                        Style="width: 100%; min-width: max-content;">
+
+                            <TemplateColumn Title="Seleção" Sortable="false" Context="farmacia">
+                                <FluentButton Appearance="@GetFarmaciaSelectAppearance(farmacia)"
+                                              Title="Selecionar farmácia"
+                                              @onclick="@(() => SelectFarmacia(farmacia))">
+                                    @GetFarmaciaSelectText(farmacia)
+                                </FluentButton>
+                            </TemplateColumn>
+
+                            <PropertyColumn Property="@(f => f.Nome)"
+                                            Title="Nome"
+                                            Sortable="true" />
+
+                            <TemplateColumn Title="CNPJ" Context="farmacia">
+                                <FluentLabel Typo="Typography.Body" Style="font-family: monospace;">@GetFarmaciaCnpj(farmacia)</FluentLabel>
+                            </TemplateColumn>
+
+                            <PropertyColumn Property="@(f => f.Telefone)"
+                                            Title="Telefone"
+                                            Sortable="false" />
+
+                            <TemplateColumn Title="Plano" Sortable="false">
+                                @if (context.Plano == "Premium")
+                                {
+                                    <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@Consts.DesignTokens.SuccessBackground">@context.Plano</FluentBadge>
+                                }
+                                else if (context.Plano == "Standard")
+                                {
+                                    <FluentBadge Appearance="Appearance.Neutral">@context.Plano</FluentBadge>
+                                }
+                                else
+                                {
+                                    <FluentBadge Appearance="Appearance.Neutral">@context.Plano</FluentBadge>
+                                }
+                            </TemplateColumn>
+
+                            <TemplateColumn Title="Status" Sortable="false">
+                                @if (context.Ativa)
+                                {
+                                    <FluentBadge Appearance="Appearance.Neutral" BackgroundColor="@Consts.DesignTokens.SuccessBackground">
+                                        Ativa
+                                    </FluentBadge>
+                                }
+                                else
+                                {
+                                    <FluentBadge Appearance="Appearance.Neutral" BackgroundColor="@Consts.DesignTokens.WarningBackground">
+                                        Bloqueada
+                                    </FluentBadge>
+                                }
+                            </TemplateColumn>
+
+                            <TemplateColumn Title="Adm" Sortable="false">
+                                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="6" VerticalAlignment="VerticalAlignment.Center">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.PersonAvailable)" Color="Color.Warning" />
+                                    <FluentLabel>@context.TotalAdministradores</FluentLabel>
+                                </FluentStack>
+                            </TemplateColumn>
+
+                            <TemplateColumn Title="Aten." Sortable="false">
+                                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="6" VerticalAlignment="VerticalAlignment.Center">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.People)" Color="Color.Accent" />
+                                    <FluentLabel>@context.TotalAtendentes</FluentLabel>
+                                </FluentStack>
+                            </TemplateColumn>
+
+                        </FluentDataGrid>
+                    </div>
+
+                    <FluentStack Orientation="Orientation.Horizontal"
+                                 VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="12"
+                                 Wrap="true"
+                                 Style="margin-top: 1rem;">
+                        <FluentButton Appearance="Appearance.Accent"
+                                      Disabled="@(_selectedFarmacia is null)"
+                                      @onclick="ShowEditSelectedFarmacia">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Edit)" Color="Color.Fill" Slot="start" />
+                            Editar farmácia selecionada
+                        </FluentButton>
+
+                        @if (_selectedFarmacia is not null)
+                        {
+                            <FluentLabel>@($"Selecionada: {_selectedFarmacia.Nome}")</FluentLabel>
+                        }
+                    </FluentStack>
+                }
+            </FluentCard>
+        </div>
+    }
+    else
+    {
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;">
+            <FluentProgressRing />
+            <FluentLabel>Carregando...</FluentLabel>
+        </div>
+    }
+</div>
+
+<!-- Form Dialog for Create/Edit -->
+<FarmaciaFormDialog Visible="@_showFormDialog"
+                    VisibleChanged="@OnFormDialogVisibleChanged"
+                    Farmacia="@_editingFarmacia"
+                    OnSave="@HandleFormSave" />
+
+@code {
+    private UserInfo? CurrentUser { get; set; }
+    private List<FarmaciaDto> FarmaciasList { get; set; } = new();
+
+    private IQueryable<FarmaciaDto> FarmaciasFiltradas
+    {
+        get
+        {
+            var filtered = FarmaciasList.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                filtered = filtered.Where(f =>
+                    (f.Nome?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (f.Cnpj?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            if (FilterPlano != "all")
+            {
+                filtered = filtered.Where(f => f.Plano == FilterPlano);
+            }
+
+            return filtered.AsQueryable();
+        }
+    }
+
+    private string SearchQuery { get; set; } = "";
+    private string FilterPlano { get; set; } = "all";
+    private bool IsLoading { get; set; } = true;
+
+    private int TotalFarmacias => FarmaciasList.Count;
+    private int TotalAtendentes => FarmaciasList.Sum(f => f.TotalAtendentes);
+    private int TotalAdministradores => FarmaciasList.Sum(f => f.TotalAdministradores);
+
+    // Form dialog
+    private bool _showFormDialog = false;
+    private FarmaciaDto? _editingFarmacia = null;
+    private FarmaciaDto? _selectedFarmacia = null;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            SearchQuery = "";
+            FilterPlano = "all";
+
+            CurrentUser = await AuthService.GetUserInfo();
+            if (CurrentUser == null)
+            {
+                Navigation.NavigateTo(Consts.Web.LoginPath, true);
+                return;
+            }
+
+            await InvokeAsync(StateHasChanged);
+            await LoadFarmacias();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing farmácias page");
+            Navigation.NavigateTo(Consts.Web.LoginPath, true);
+        }
+    }
+
+    private async Task LoadFarmacias()
+    {
+        IsLoading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            FarmaciasList = await PharmazapApiService.GetFarmaciasAsync();
+            if (_selectedFarmacia is not null)
+            {
+                _selectedFarmacia = FarmaciasList.FirstOrDefault(f => f.Id == _selectedFarmacia.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading farmácias");
+            ToastService.ShowError("Erro ao carregar farmácias.");
+        }
+        finally
+        {
+            IsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            StateHasChanged();
+    }
+
+    private void ClearFilters()
+    {
+        SearchQuery = "";
+        FilterPlano = "all";
+        StateHasChanged();
+    }
+
+    private void ShowNovaFarmacia()
+    {
+        _editingFarmacia = null;
+        _showFormDialog = true;
+    }
+
+    private void SelectFarmacia(FarmaciaDto farmacia)
+    {
+        _selectedFarmacia = _selectedFarmacia?.Id == farmacia.Id ? null : farmacia;
+    }
+
+    private bool IsFarmaciaSelecionada(FarmaciaDto farmacia)
+        => _selectedFarmacia?.Id == farmacia.Id;
+
+    private Appearance GetFarmaciaSelectAppearance(FarmaciaDto farmacia)
+        => IsFarmaciaSelecionada(farmacia) ? Appearance.Accent : Appearance.Outline;
+
+    private string GetFarmaciaSelectText(FarmaciaDto farmacia)
+        => IsFarmaciaSelecionada(farmacia) ? "Selecionada" : "Selecionar";
+
+    private static string GetFarmaciaCnpj(FarmaciaDto farmacia)
+        => farmacia.Cnpj?.MaskCnpj() ?? "";
+
+    private void ShowEditSelectedFarmacia()
+    {
+        if (_selectedFarmacia is null)
+        {
+            return;
+        }
+
+        ShowEditFarmacia(_selectedFarmacia);
+    }
+
+    private void ShowEditFarmacia(FarmaciaDto farmacia)
+    {
+        _editingFarmacia = farmacia;
+        _selectedFarmacia = farmacia;
+        _showFormDialog = true;
+    }
+
+    private async Task OnFormDialogVisibleChanged(bool visible)
+    {
+        _showFormDialog = visible;
+        StateHasChanged();
+    }
+
+    private async Task HandleFormSave((bool IsNew, CreateFarmaciaDto? Create, UpdateFarmaciaDto? Update, IBrowserFile? Logo) args)
+    {
+        _showFormDialog = false;
+
+        try
+        {
+            if (args.IsNew && args.Create != null)
+            {
+                if (args.Logo != null)
+                {
+                    await using var stream = args.Logo.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+                    var (uploadSuccess, logoUrl, uploadMessage) = await PharmazapApiService.UploadFarmaciaLogoAsync(
+                        stream, args.Logo.Name, args.Logo.ContentType);
+
+                    if (!uploadSuccess || string.IsNullOrWhiteSpace(logoUrl))
+                    {
+                        ToastService.ShowError($"Erro ao enviar logo da farmácia: {uploadMessage}");
+                        return;
+                    }
+
+                    args.Create.LogoUrl = logoUrl;
+                }
+
+                var (success, message) = await PharmazapApiService.CreateFarmaciaAsync(args.Create);
+                if (success)
+                {
+                    ToastService.ShowSuccess("Farmácia registrada com sucesso!");
+                    await LoadFarmacias();
+                }
+                else
+                {
+                    ToastService.ShowError($"Erro ao registrar farmácia: {message}");
+                }
+            }
+            else if (!args.IsNew && args.Update != null && _editingFarmacia != null)
+            {
+                if (args.Logo != null)
+                {
+                    await using var stream = args.Logo.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+                    var (uploadSuccess, logoUrl, uploadMessage) = await PharmazapApiService.UploadFarmaciaLogoAsync(
+                        stream, args.Logo.Name, args.Logo.ContentType);
+
+                    if (!uploadSuccess || string.IsNullOrWhiteSpace(logoUrl))
+                    {
+                        ToastService.ShowError($"Erro ao enviar logo da farmácia: {uploadMessage}");
+                        return;
+                    }
+
+                    args.Update.LogoUrl = logoUrl;
+                }
+
+                var (success, message) = await PharmazapApiService.UpdateFarmaciaAsync(_editingFarmacia.Id, args.Update);
+                if (success)
+                {
+                    ToastService.ShowSuccess("Farmácia atualizada com sucesso!");
+                    // Update NavMenu logo in current session when logo was changed or removed.
+                    // args.Update.LogoUrl != null means the user changed the logo:
+                    //   - non-empty string = new logo URL
+                    //   - empty string = logo was removed (API stores null)
+                    if (args.Update.LogoUrl != null)
+                    {
+                        var updatedLogoUrl = string.IsNullOrWhiteSpace(args.Update.LogoUrl) ? null : args.Update.LogoUrl;
+                        await AuthService.UpdateFarmaciaLogoUrl(updatedLogoUrl);
+                    }
+                    await LoadFarmacias();
+                }
+                else
+                {
+                    ToastService.ShowError($"Erro ao atualizar farmácia: {message}");
+                }
+            }
+        }
+        finally
+        {
+            _editingFarmacia = null;
+        }
+    }
+}

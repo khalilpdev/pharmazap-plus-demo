@@ -1,0 +1,166 @@
+@* PharmazapPlus.Web/Components/Pages/MensagemPreDefinidaFormDialog.razor *@
+
+@inject ILogger<MensagemPreDefinidaFormDialog> Logger
+
+<FluentDialog @ref="_dialog" Modal="true" Hidden="@(!Visible)" TrapFocus="true"
+              @ondialogdismiss="HandleCancel"
+              aria-label="@(Mensagem == null ? "Nova Mensagem Pré-Definida" : "Editar Mensagem Pré-Definida")">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.ChatMultiple)" />
+                <FluentLabel Typo="Typography.Subject">@(Mensagem == null ? "Nova Mensagem Pré-Definida" : "Editar Mensagem Pré-Definida")</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="HandleCancel" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0;">
+
+            <FluentTextField @bind-Value="@_titulo"
+                             Label="Título *"
+                             Placeholder="Ex: Saudação, Farmácia fechada, Pedido confirmado..."
+                             Style="width: 100%;"
+                             Required="true" />
+
+            <div style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                <label style="font-size: 0.875rem; font-weight: 600;">Texto da mensagem *</label>
+                <FluentTextArea Value="@_texto"
+                                ValueChanged="@(v => _texto = v ?? "")"
+                                Immediate="true"
+                                Placeholder="Digite o texto que será enviado ao cliente..."
+                                Style="width: 100%; min-height: 120px; max-width: 100%;"
+                                MaxLength="2000"
+                                Rows="5" />
+                <span style="font-size: 0.75rem; color: var(--neutral-foreground-hint); text-align: right;">@(_texto.Length)/2000</span>
+            </div>
+
+            <FluentNumberField @bind-Value="@_ordem"
+                               Label="Ordem de exibição"
+                               Min="0"
+                               Max="999"
+                               Style="width: 100%;" />
+
+            <FluentCheckbox @bind-Value="@_ativo">
+                Mensagem ativa
+            </FluentCheckbox>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_errorMessage</FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="HandleCancel" Disabled="@_isSaving">
+            Cancelar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="HandleSave" Disabled="@_isSaving">
+            @if (_isSaving)
+            {
+                <FluentProgressRing Style="width:16px; height:16px;" />
+                <span style="margin-left:0.5rem;">Salvando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Save)" Slot="start" Color="Color.Fill" />
+                <span>@(Mensagem == null ? "Criar" : "Salvar")</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public MensagemPreDefinidaDto? Mensagem { get; set; }
+    [Parameter] public EventCallback<(bool IsNew, CreateMensagemPreDefinidaDto? Create, UpdateMensagemPreDefinidaDto? Update)> OnSave { get; set; }
+
+    private FluentDialog? _dialog;
+    private string _titulo = "";
+    private string _texto = "";
+    private bool _ativo = true;
+    private int _ordem = 0;
+    private bool _isSaving = false;
+    private string _errorMessage = "";
+
+    protected override void OnParametersSet()
+    {
+        if (Mensagem != null)
+        {
+            _titulo = Mensagem.Titulo;
+            _texto = Mensagem.Texto;
+            _ativo = Mensagem.Ativo;
+            _ordem = Mensagem.Ordem;
+        }
+        else
+        {
+            _titulo = "";
+            _texto = "";
+            _ativo = true;
+            _ordem = 0;
+        }
+        _errorMessage = "";
+        _isSaving = false;
+    }
+
+    private async Task HandleSave()
+    {
+        _errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(_titulo))
+        {
+            _errorMessage = "Título é obrigatório.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_texto))
+        {
+            _errorMessage = "Texto da mensagem é obrigatório.";
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            if (Mensagem == null)
+            {
+                var create = new CreateMensagemPreDefinidaDto
+                {
+                    Titulo = _titulo.Trim(),
+                    Texto = _texto.Trim(),
+                    Ativo = _ativo,
+                    Ordem = _ordem
+                };
+                await OnSave.InvokeAsync((true, create, null));
+            }
+            else
+            {
+                var update = new UpdateMensagemPreDefinidaDto
+                {
+                    Titulo = _titulo.Trim(),
+                    Texto = _texto.Trim(),
+                    Ativo = _ativo,
+                    Ordem = _ordem
+                };
+                await OnSave.InvokeAsync((false, null, update));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        await VisibleChanged.InvokeAsync(false);
+    }
+}

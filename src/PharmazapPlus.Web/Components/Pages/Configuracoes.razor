@@ -1,0 +1,325 @@
+@page "/configuracoes"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = $"{UserRoles.Gestor},{UserRoles.Administrador},{UserRoles.Desenvolvedor},{UserRoles.Atendente}")]
+
+@using PharmazapPlus.Shared.Models.Mensagens
+
+@inject IAuthService AuthService
+@inject ILocalStorageService LocalStorage
+@inject IPharmazapApiService PharmazapApiService
+@inject ThemeService ThemeService
+@inject IToastService ToastService
+
+<PageTitle>Configurações - Pharmazap Plus</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 1.5rem;">
+    <FluentCard Style="padding: 1.5rem;">
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="12">
+            <FluentIcon Icon="@(Icons.Regular.Size32.Settings)" Color="Color.Accent" />
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                <FluentLabel Typo="Typography.PageTitle">Configurações</FluentLabel>
+                <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Gerencie as configurações do sistema</FluentLabel>
+            </FluentStack>
+        </FluentStack>
+    </FluentCard>
+
+    <FluentCard Style="padding: 1.5rem;">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size20.ColorFill)" Style="color: var(--neutral-foreground-hint);" />
+                <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Aparência</FluentLabel>
+            </FluentStack>
+
+            <div style="height: 1px; background: var(--neutral-stroke-rest); margin: 0 0 4px 0;"></div>
+
+            <div>
+                <FluentLabel Typo="Typography.Body" Weight="FontWeight.Bold">Cor de destaque</FluentLabel>
+                <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); display: block; margin-top: 2px; font-size: 0.8rem;">
+                    Personalize a cor de destaque (accent) do sistema. A preferência é salva no navegador e aplicada imediatamente.
+                </FluentLabel>
+            </div>
+
+            <div role="radiogroup" aria-label="Selecionar cor de destaque" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                @foreach (var color in _accentColors)
+                {
+                    var isSelected = ThemeService.CurrentAccentColor == color.Hex;
+                    <button @onclick="@(() => ApplyAccentColor(color.Hex))"
+                            title="@color.Name"
+                            aria-label="@color.Name"
+                            aria-pressed="@isSelected.ToString().ToLower()"
+                            style="width: 36px; height: 36px; border-radius: 50%;
+                                   background: @(color.Hex is null ? "var(--accent-fill-rest)" : color.Hex);
+                                   border: @(isSelected ? "3px solid var(--neutral-foreground-rest)" : "3px solid transparent");
+                                   outline: @(isSelected ? "2px solid var(--neutral-foreground-rest)" : "none");
+                                   outline-offset: 2px;
+                                   cursor: pointer; padding: 0;
+                                   transition: border-color 0.15s, outline 0.15s;
+                                   box-sizing: border-box;">
+                        @if (color.Hex is null)
+                        {
+                        <span aria-hidden="true" style="font-size: 14px; display: flex; align-items: center; justify-content: center; height: 100%; color: white;">✦</span>
+                        }
+                    </button>
+                }
+            </div>
+
+            @if (ThemeService.CurrentAccentColor is not null)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); font-size: 0.8rem;">
+                        Cor atual: <strong>@ThemeService.CurrentAccentColor</strong>
+                    </FluentLabel>
+                    <FluentButton Appearance="Appearance.Stealth"
+                                  Title="Restaurar cor padrão"
+                                  Style="font-size: 0.8rem; height: 24px; padding: 0 8px;"
+                                  @onclick="@(() => ApplyAccentColor(null))">
+                        Restaurar padrão
+                    </FluentButton>
+                </FluentStack>
+            }
+        </FluentStack>
+    </FluentCard>
+
+    @if (CanManageGeneralSettings)
+    {
+        <FluentCard Style="padding: 1.5rem;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentIcon Icon="@(Icons.Regular.Size20.People)" Style="color: var(--neutral-foreground-hint);" />
+                    <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Configurações de CRM</FluentLabel>
+                </FluentStack>
+
+                <div style="height: 1px; background: var(--neutral-stroke-rest); margin: 0 0 4px 0;"></div>
+
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="12" Style="justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <FluentLabel Typo="Typography.Body" Weight="FontWeight.Bold">Exigir cadastro completo para cliente ativo</FluentLabel>
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); display: block; margin-top: 2px; font-size: 0.8rem;">
+                            Quando ativado, o sistema solicitará nome completo, telefone e CPF antes de avançar o perfil do cliente para ativo ou uso contínuo.
+                        </FluentLabel>
+                    </div>
+                    <FluentSwitch @bind-Value="_exigirCadastroCompleto"
+                                  @bind-Value:after="OnExigirCadastroCompletoChanged" />
+                </FluentStack>
+            </FluentStack>
+        </FluentCard>
+
+        <FluentCard Style="padding: 1.5rem;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentIcon Icon="@(Icons.Regular.Size20.Settings)" Style="color: var(--neutral-foreground-hint);" />
+                    <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Configurações Gerais</FluentLabel>
+                </FluentStack>
+
+                <div style="height: 1px; background: var(--neutral-stroke-rest); margin: 0 0 4px 0;"></div>
+
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="12" Style="justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <FluentLabel Typo="Typography.Body" Weight="FontWeight.Bold">Salvar log completo ao enviar / receber mídia da API GO</FluentLabel>
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); display: block; margin-top: 2px; font-size: 0.8rem;">
+                            Quando ativado, salva request e response completos das operações de mídia com a Evolution GO.
+                        </FluentLabel>
+                    </div>
+                    <FluentSwitch @bind-Value="_salvarLogCompletoMidiaApiGo"
+                                  @bind-Value:after="OnSalvarLogCompletoMidiaApiGoChanged" />
+                </FluentStack>
+
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="12" Style="justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <FluentLabel Typo="Typography.Body" Weight="FontWeight.Bold">Habilitar bloqueio de remetente (por farmácia)</FluentLabel>
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); display: block; margin-top: 2px; font-size: 0.8rem;">
+                            Controla a exibição do botão "Bloquear" nos atendimentos pendentes individuais da farmácia atual.
+                        </FluentLabel>
+                    </div>
+                    <FluentSwitch @bind-Value="_habilitarBloqueioRemetente"
+                                  @bind-Value:after="OnHabilitarBloqueioRemetenteChanged" />
+                </FluentStack>
+
+                @if (CanManageEtiquetaPermission)
+                {
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="12" Style="justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <FluentLabel Typo="Typography.Body" Weight="FontWeight.Bold">Permitir que atendente cadastre e atualize etiquetas</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); display: block; margin-top: 2px; font-size: 0.8rem;">
+                                O atendente continua podendo etiquetar atendimentos com o cadastro existente. Quando ativado, também poderá criar, editar, ativar e inativar etiquetas.
+                            </FluentLabel>
+                        </div>
+                        <FluentSwitch @bind-Value="_permitirGerenciarEtiquetasAtendente"
+                                      @bind-Value:after="OnPermitirGerenciarEtiquetasAtendenteChanged" />
+                    </FluentStack>
+                }
+            </FluentStack>
+        </FluentCard>
+
+        <FluentCard Style="padding: 1.5rem;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentIcon Icon="@(Icons.Regular.Size20.Prohibited)" Style="color: var(--neutral-foreground-hint);" />
+                    <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Remetentes Bloqueados</FluentLabel>
+                </FluentStack>
+
+                <div style="height: 1px; background: var(--neutral-stroke-rest); margin: 0 0 4px 0;"></div>
+
+                @if (_isLoadingBloqueados)
+                {
+                    <FluentProgressRing />
+                }
+                else if (_remetentesBlockeados.Count == 0)
+                {
+                    <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">
+                        Nenhum remetente bloqueado
+                    </FluentLabel>
+                }
+                else
+                {
+                    <FluentDataGrid Items="@_remetentesBlockeados.AsQueryable()"
+                                    Style="min-width: max-content;"
+                                    GridTemplateColumns="minmax(120px,auto) minmax(100px,auto) minmax(150px,auto) minmax(100px,auto) minmax(80px,auto)">
+                        <PropertyColumn Title="Número" Property="@(x => x.NumeroNormalizado.FormatTelefone())" />
+                        <PropertyColumn Title="Data Bloqueio" Property="@(x => x.DataBloqueio.ToString("dd/MM/yyyy HH:mm"))" />
+                        <PropertyColumn Title="Bloqueado por" Property="@(x => x.NomeBloqueadoPor ?? "Desconhecido")" />
+                        <PropertyColumn Title="Escopo" Property="@(x => x.Escopo)" />
+                        <TemplateColumn Title="Ações" Style="width: auto;">
+                            <FluentButton Appearance="Appearance.Outline"
+                                          Size="ButtonSize.Small"
+                                          @onclick="@(async () => await DesbloquearRemetente(context))"
+                                          Title="Desbloquear">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.Checkmark)" />
+                                Desbloquear
+                            </FluentButton>
+                        </TemplateColumn>
+                    </FluentDataGrid>
+                }
+            </FluentStack>
+        </FluentCard>
+    }
+</FluentStack>
+
+@code {
+    private bool _exigirCadastroCompleto;
+    private bool _salvarLogCompletoMidiaApiGo;
+    private bool _habilitarBloqueioRemetente;
+    private bool _permitirGerenciarEtiquetasAtendente;
+    private List<RemetenteBloqueado> _remetentesBlockeados = new();
+    private bool _isLoadingBloqueados;
+
+    private record AccentColorOption(string Name, string? Hex);
+
+    private bool CanManageGeneralSettings => AuthService.HasRole(UserRoles.Gestor, UserRoles.Administrador);
+    private bool CanManageEtiquetaPermission => AuthService.HasRole(UserRoles.Administrador);
+
+    private static readonly AccentColorOption[] _accentColors =
+    [
+        new("Padrão (FluentUI)",  null),
+        new("Verde",              "#0b8235"),
+        new("Teal",               "#0097a7"),
+        new("Azul",               "#0078d4"),
+        new("Roxo",               "#5c2d91"),
+        new("Azul escuro",        "#00188f"),
+        new("Laranja",            "#ca5010"),
+        new("Vermelho",           "#a4262c"),
+    ];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            if (CanManageGeneralSettings)
+            {
+                _exigirCadastroCompleto = await LocalStorage.GetItemAsync<bool>("cfg_exigir_cadastro_completo");
+                _salvarLogCompletoMidiaApiGo = await PharmazapApiService.GetSalvarLogCompletoMidiaApiGoAsync();
+                _habilitarBloqueioRemetente = await PharmazapApiService.GetHabilitarBloqueioRemetenteAsync();
+                if (CanManageEtiquetaPermission)
+                    _permitirGerenciarEtiquetasAtendente = await PharmazapApiService.GetPermitirGerenciarEtiquetasAtendenteAsync();
+                await CarregarRemetentesBlockeados();
+            }
+
+            StateHasChanged();
+        }
+    }
+
+    private async Task CarregarRemetentesBlockeados()
+    {
+        _isLoadingBloqueados = true;
+        StateHasChanged();
+
+        try
+        {
+            _remetentesBlockeados = await PharmazapApiService.ListarRemetentesBlockeadosAsync();
+        }
+        catch
+        {
+            // Log error - toast notification would be shown at API service level
+        }
+        finally
+        {
+            _isLoadingBloqueados = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DesbloquearRemetente(RemetenteBloqueado bloqueado)
+    {
+        try
+        {
+            var (success, message) = await PharmazapApiService.DesbloqueRemetenteAsync(bloqueado.Id);
+            if (success)
+            {
+                await CarregarRemetentesBlockeados();
+            }
+        }
+        catch
+        {
+            // Log error
+        }
+    }
+
+    private async Task OnExigirCadastroCompletoChanged()
+    {
+        await LocalStorage.SetItemAsync("cfg_exigir_cadastro_completo", _exigirCadastroCompleto);
+    }
+
+    private async Task OnSalvarLogCompletoMidiaApiGoChanged()
+    {
+        await PharmazapApiService.UpdateSalvarLogCompletoMidiaApiGoAsync(_salvarLogCompletoMidiaApiGo);
+    }
+
+    private async Task OnHabilitarBloqueioRemetenteChanged()
+    {
+        var valorAnterior = !_habilitarBloqueioRemetente;
+        var (success, message) = await PharmazapApiService.UpdateHabilitarBloqueioRemetenteAsync(_habilitarBloqueioRemetente);
+
+        if (!success)
+        {
+            _habilitarBloqueioRemetente = valorAnterior;
+            ToastService.ShowError(message);
+            StateHasChanged();
+            return;
+        }
+
+        ToastService.ShowSuccess(message);
+    }
+
+    private async Task OnPermitirGerenciarEtiquetasAtendenteChanged()
+    {
+        var valorAnterior = !_permitirGerenciarEtiquetasAtendente;
+        var (success, message) = await PharmazapApiService.UpdatePermitirGerenciarEtiquetasAtendenteAsync(_permitirGerenciarEtiquetasAtendente);
+
+        if (!success)
+        {
+            _permitirGerenciarEtiquetasAtendente = valorAnterior;
+            ToastService.ShowError(message);
+            StateHasChanged();
+            return;
+        }
+
+        ToastService.ShowSuccess(message);
+    }
+
+    private void ApplyAccentColor(string? hex)
+    {
+        ThemeService.SetAccentColor(hex);
+        _ = AuthService.UpdateAccentColor(hex);
+        StateHasChanged();
+    }
+}

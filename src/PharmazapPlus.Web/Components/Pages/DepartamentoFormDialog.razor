@@ -1,0 +1,135 @@
+@* PharmazapPlus.Web/Components/Pages/DepartamentoFormDialog.razor *@
+
+@inject ILogger<DepartamentoFormDialog> Logger
+
+<FluentDialog @ref="_dialog" Modal="true" Hidden="@(!Visible)" TrapFocus="true"
+              @ondialogdismiss="HandleCancel"
+              aria-label="@(Departamento == null ? "Novo Departamento" : "Editar Departamento")">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Building)" />
+                <FluentLabel Typo="Typography.Subject">@(Departamento == null ? "Novo Departamento" : "Editar Departamento")</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="HandleCancel" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+
+    <FluentDialogBody Style="overflow: visible;">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0; overflow: visible; position: relative; z-index: 30;">
+
+            <FluentTextField @bind-Value="@_nome"
+                             Label="Nome *"
+                             Placeholder="Nome do departamento"
+                             Style="width: 100%;"
+                             Required="true" />
+
+            <FluentCheckbox @bind-Value="@_ativo">
+                Departamento ativo
+            </FluentCheckbox>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_errorMessage</FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="HandleCancel" Disabled="@_isSaving">
+            Cancelar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="HandleSave" Disabled="@_isSaving">
+            @if (_isSaving)
+            {
+                <FluentProgressRing Style="width:16px; height:16px;" />
+                <span style="margin-left:0.5rem;">Salvando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Save)" Slot="start" Color="Color.Fill" />
+                <span>@(Departamento == null ? "Criar" : "Salvar")</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public DepartamentoDto? Departamento { get; set; }
+    [Parameter] public EventCallback<(bool IsNew, CreateDepartamentoDto? Create, UpdateDepartamentoDto? Update)> OnSave { get; set; }
+
+    private FluentDialog? _dialog;
+    private string _nome = "";
+    private bool _ativo = true;
+    private bool _isSaving = false;
+    private string _errorMessage = "";
+
+    protected override void OnParametersSet()
+    {
+        if (Departamento != null)
+        {
+            _nome = Departamento.Nome;
+            _ativo = Departamento.Ativo;
+        }
+        else
+        {
+            _nome = "";
+            _ativo = true;
+        }
+
+        _errorMessage = "";
+        _isSaving = false;
+    }
+
+    private async Task HandleSave()
+    {
+        _errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(_nome))
+        {
+            _errorMessage = "Nome é obrigatório.";
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            if (Departamento == null)
+            {
+                var create = new CreateDepartamentoDto
+                {
+                    Nome = _nome.Trim(),
+                    Ativo = _ativo
+                };
+
+                await OnSave.InvokeAsync((true, create, null));
+            }
+            else
+            {
+                var update = new UpdateDepartamentoDto
+                {
+                    Nome = _nome.Trim(),
+                    Ativo = _ativo
+                };
+
+                await OnSave.InvokeAsync((false, null, update));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        await VisibleChanged.InvokeAsync(false);
+    }
+}

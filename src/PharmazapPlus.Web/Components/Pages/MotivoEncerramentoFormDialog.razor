@@ -1,0 +1,167 @@
+@* PharmazapPlus.Web/Components/Pages/MotivoEncerramentoFormDialog.razor *@
+
+@inject ILogger<MotivoEncerramentoFormDialog> Logger
+
+<FluentDialog @ref="_dialog" Modal="true" Hidden="@(!Visible)" TrapFocus="true"
+              @ondialogdismiss="HandleCancel"
+              aria-label="@(Motivo == null ? "Novo Motivo de Encerramento" : "Editar Motivo de Encerramento")">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.CallEnd)" />
+                <FluentLabel Typo="Typography.Subject">@(Motivo == null ? "Novo Motivo de Encerramento" : "Editar Motivo de Encerramento")</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="HandleCancel" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0;">
+
+            <FluentTextField @bind-Value="@_nome"
+                             Label="Nome do motivo *"
+                             Placeholder="Ex: Venda confirmada, Cliente desistiu..."
+                             Style="width: 100%;"
+                             Required="true" />
+
+            <FluentNumberField @bind-Value="@_ordem"
+                               Label="Ordem de exibição"
+                               Min="0"
+                               Max="999"
+                               Style="width: 100%;" />
+
+            <FluentCheckbox @bind-Value="@_exigeValorVenda">
+                Exige valor da venda
+            </FluentCheckbox>
+            <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.75rem; margin-top: -12px;">
+                Quando marcado, o atendente será obrigado a informar o valor da venda ao encerrar com este motivo.
+            </FluentLabel>
+
+            <FluentCheckbox @bind-Value="@_exigeComprovante">
+                Exige comprovante (imagem)
+            </FluentCheckbox>
+            <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.75rem; margin-top: -12px;">
+                Quando marcado, o atendente será obrigado a anexar uma imagem (ex: pedido, cupom fiscal) ao encerrar com este motivo.
+            </FluentLabel>
+
+            <FluentCheckbox @bind-Value="@_ativo">
+                Motivo ativo
+            </FluentCheckbox>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_errorMessage</FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="HandleCancel" Disabled="@_isSaving">
+            Cancelar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="HandleSave" Disabled="@_isSaving">
+            @if (_isSaving)
+            {
+                <FluentProgressRing Style="width:16px; height:16px;" />
+                <span style="margin-left:0.5rem;">Salvando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Save)" Slot="start" Color="Color.Fill" />
+                <span>@(Motivo == null ? "Criar" : "Salvar")</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public MotivoEncerramentoDto? Motivo { get; set; }
+    [Parameter] public EventCallback<(bool IsNew, CreateMotivoEncerramentoDto? Create, UpdateMotivoEncerramentoDto? Update)> OnSave { get; set; }
+
+    private FluentDialog? _dialog;
+    private string _nome = "";
+    private bool _exigeValorVenda = false;
+    private bool _exigeComprovante = false;
+    private bool _ativo = true;
+    private int _ordem = 0;
+    private bool _isSaving = false;
+    private string _errorMessage = "";
+
+    protected override void OnParametersSet()
+    {
+        if (Motivo != null)
+        {
+            _nome = Motivo.Nome;
+            _exigeValorVenda = Motivo.ExigeValorVenda;
+            _exigeComprovante = Motivo.ExigeComprovante;
+            _ativo = Motivo.Ativo;
+            _ordem = Motivo.Ordem;
+        }
+        else
+        {
+            _nome = "";
+            _exigeValorVenda = false;
+            _exigeComprovante = false;
+            _ativo = true;
+            _ordem = 0;
+        }
+        _errorMessage = "";
+        _isSaving = false;
+    }
+
+    private async Task HandleSave()
+    {
+        _errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(_nome))
+        {
+            _errorMessage = "Nome é obrigatório.";
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            if (Motivo == null)
+            {
+                var create = new CreateMotivoEncerramentoDto
+                {
+                    Nome = _nome.Trim(),
+                    ExigeValorVenda = _exigeValorVenda,
+                    ExigeComprovante = _exigeComprovante,
+                    Ativo = _ativo,
+                    Ordem = _ordem
+                };
+                await OnSave.InvokeAsync((true, create, null));
+            }
+            else
+            {
+                var update = new UpdateMotivoEncerramentoDto
+                {
+                    Nome = _nome.Trim(),
+                    ExigeValorVenda = _exigeValorVenda,
+                    ExigeComprovante = _exigeComprovante,
+                    Ativo = _ativo,
+                    Ordem = _ordem
+                };
+                await OnSave.InvokeAsync((false, null, update));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        await VisibleChanged.InvokeAsync(false);
+    }
+}

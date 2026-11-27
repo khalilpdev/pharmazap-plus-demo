@@ -1,0 +1,164 @@
+@* PharmazapPlus.Web/Components/Pages/EtiquetaFormDialog.razor *@
+
+@inject ILogger<EtiquetaFormDialog> Logger
+
+<FluentDialog @ref="_dialog" Modal="true" Hidden="@(!Visible)" TrapFocus="true"
+              @ondialogdismiss="HandleCancel"
+              aria-label="@(Etiqueta == null ? "Nova Etiqueta" : "Editar Etiqueta")">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Tag)" />
+                <FluentLabel Typo="Typography.Subject">@(Etiqueta == null ? "Nova Etiqueta" : "Editar Etiqueta")</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="HandleCancel" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+
+    <FluentDialogBody Style="overflow: visible;">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0; overflow: visible; position: relative; z-index: 30;">
+
+            <FluentTextField @bind-Value="@_nome"
+                             Label="Nome *"
+                             Placeholder="Nome da etiqueta"
+                             Style="width: 100%;"
+                             Required="true" />
+
+            <div style="position: relative; z-index: 30; overflow: visible;">
+                <FluentLabel Style="margin-bottom: 0.4rem; display: block;">Cor *</FluentLabel>
+                <FluentSelect TOption="string"
+                              @bind-Value="@_cor"
+                              Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                    @foreach (var opcao in _coresDisponiveis)
+                    {
+                        <FluentOption TOption="string" Value="@opcao.Hex">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8"
+                                         VerticalAlignment="VerticalAlignment.Center">
+                                <div style="width: 14px; height: 14px; border-radius: 50%; background-color: @opcao.Hex; flex-shrink: 0; border: 1px solid var(--neutral-stroke-rest);"></div>
+                                <span>@opcao.Nome</span>
+                            </FluentStack>
+                        </FluentOption>
+                    }
+                </FluentSelect>
+                @if (!string.IsNullOrEmpty(_cor))
+                {
+                    <div style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <div style="width: 24px; height: 24px; border-radius: 6px; background-color: @_cor; border: 1px solid var(--neutral-stroke-rest);"></div>
+                        <FluentLabel style="font-family: monospace; font-size: 0.85rem; color: var(--neutral-foreground-hint);">@_cor</FluentLabel>
+                    </div>
+                }
+            </div>
+
+            <FluentCheckbox @bind-Value="@_ativo">
+                Etiqueta ativa
+            </FluentCheckbox>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_errorMessage</FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="HandleCancel" Disabled="@_isSaving">
+            Cancelar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="HandleSave" Disabled="@_isSaving">
+            @if (_isSaving)
+            {
+                <FluentProgressRing Style="width:16px; height:16px;" />
+                <span style="margin-left:0.5rem;">Salvando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Save)" Slot="start" Color="Color.Fill" />
+                <span>@(Etiqueta == null ? "Criar" : "Salvar")</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public EtiquetaDto? Etiqueta { get; set; }
+    [Parameter] public EventCallback<(bool IsNew, CreateEtiquetaDto? Create, UpdateEtiquetaDto? Update)> OnSave { get; set; }
+
+    private FluentDialog? _dialog;
+    private string _nome = "";
+    private string _cor = Consts.EtiquetaCores.Padrao;
+    private bool _ativo = true;
+    private bool _isSaving = false;
+    private string _errorMessage = "";
+
+    private static readonly (string Nome, string Hex)[] _coresDisponiveis = Consts.EtiquetaCores.Paleta;
+
+    protected override void OnParametersSet()
+    {
+        if (Etiqueta != null)
+        {
+            _nome = Etiqueta.Nome;
+            _cor = Etiqueta.Cor;
+            _ativo = Etiqueta.Ativo;
+        }
+        else
+        {
+            _nome = "";
+            _cor = Consts.EtiquetaCores.Padrao;
+            _ativo = true;
+        }
+        _errorMessage = "";
+        _isSaving = false;
+    }
+
+    private async Task HandleSave()
+    {
+        _errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(_nome))
+        {
+            _errorMessage = "Nome é obrigatório.";
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            if (Etiqueta == null)
+            {
+                var create = new CreateEtiquetaDto
+                {
+                    Nome = _nome.Trim(),
+                    Cor = _cor,
+                    Ativo = _ativo
+                };
+                await OnSave.InvokeAsync((true, create, null));
+            }
+            else
+            {
+                var update = new UpdateEtiquetaDto
+                {
+                    Nome = _nome.Trim(),
+                    Cor = _cor,
+                    Ativo = _ativo
+                };
+                await OnSave.InvokeAsync((false, null, update));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        await VisibleChanged.InvokeAsync(false);
+    }
+}

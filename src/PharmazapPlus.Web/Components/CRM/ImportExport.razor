@@ -1,0 +1,424 @@
+﻿@* PharmazapPlus.Web/Components/CRM/ImportExport.razor *@
+
+@inject IHttpClientFactory HttpClientFactory
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<ImportExport> Logger
+
+<FluentDialog @ref="importDialog" Modal="true" Hidden="@(!ShowImportDialog)" @ondialogdismiss="CloseImportDialog">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentLabel Typo="Typography.Subject">Importar Clientes</FluentLabel>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseImportDialog" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    
+    <FluentDialogBody>
+        <FluentTabs ActiveId="@SelectedTab">
+            <FluentTab Id="csv">CSV</FluentTab>
+            <FluentTab Id="manual">Manual</FluentTab>
+        </FluentTabs>
+
+        @if (SelectedTab == "csv")
+        {
+            <div class="import-instructions">
+                <h3>Importar de CSV</h3>
+                <p>Faça o download do template e preencha com os dados dos clientes:</p>
+
+                <FluentButton Appearance="Appearance.Outline" @onclick="DownloadTemplate">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.ArrowDownload)" Slot="start" />
+                    Baixar Template CSV
+                </FluentButton>
+
+                <div class="upload-area">
+                    <label for="fileInput" class="upload-label" aria-label="Selecionar arquivo CSV para importação">
+                        <InputFile id="fileInput" accept=".csv" hidden
+                                   OnChange="HandleFileSelect" />
+
+                        @if (IsUploading)
+                        {
+                            <div class="uploading">
+                                <FluentProgressRing />
+                                <p>Processando arquivo...</p>
+                            </div>
+                        }
+                        else if (SelectedFile != null)
+                        {
+                            <div class="file-selected" @onclick:stopPropagation="true">
+                                <FluentIcon Icon="@Icons.Regular.Size24.Document" />
+                                <div>
+                                    <strong>@SelectedFile.Name</strong>
+                                    <p>@(SelectedFile.Size / 1024) KB</p>
+                                </div>
+                                <FluentButton Appearance="Appearance.Stealth" @onclick="ClearFile">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                                </FluentButton>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="upload-prompt">
+                                <FluentIcon Icon="@(Icons.Regular.Size32.Cloud)" />
+                                <p>Clique para selecionar um arquivo CSV</p>
+                                <p class="subtext">Tamanho máximo: 10 MB</p>
+                            </div>
+                        }
+                    </label>
+                </div>
+
+                <div class="import-options">
+                    <FluentCheckbox @bind-Checked="UpdateExisting">
+                        Atualizar clientes existentes
+                    </FluentCheckbox>
+
+                    <FluentCheckbox @bind-Checked="SkipInvalidRows">
+                        Ignorar linhas inválidas
+                    </FluentCheckbox>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="import-instructions">
+                <h3>Importação Manual</h3>
+                <p>Adicione clientes um por um através do formulário.</p>
+
+                <FluentButton Appearance="Appearance.Accent" @onclick="GoToNewClient">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Slot="start" />
+                    Adicionar Cliente Manualmente
+                </FluentButton>
+            </div>
+        }
+        
+        @if (!string.IsNullOrEmpty(ImportError))
+        {
+            <FluentMessageBar Intent="@MessageIntent.Error" Style="margin-top: 1rem;">
+                @ImportError
+            </FluentMessageBar>
+        }
+        
+        @if (ImportResult != null)
+        {
+            <div class="import-result">
+                <h4>Resultado da Importação</h4>
+                
+                <div class="result-summary">
+                    <div class="result-item success">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.CheckmarkCircle)" />
+                        <span>Importados: @ImportResult.ImportedRows</span>
+                    </div>
+                    
+                    @if (ImportResult.FailedRows > 0)
+                    {
+                        <div class="result-item error">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.DismissCircle)" />
+                            <span>Falhas: @ImportResult.FailedRows</span>
+                        </div>
+                    }
+                    
+                    <div class="result-item total">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Document)" />
+                        <span>Total: @ImportResult.TotalRows</span>
+                    </div>
+                </div>
+                
+                @if (ImportResult.Errors?.Any() == true)
+                {
+                    <div class="import-errors">
+                        <h5>Erros encontrados:</h5>
+                        <ul>
+                            @foreach (var error in ImportResult.Errors.Take(10))
+                            {
+                                <li>@error</li>
+                            }
+                        </ul>
+                        @if (ImportResult.Errors.Count > 10)
+                        {
+                            <p>... e mais @(ImportResult.Errors.Count - 10) erros</p>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </FluentDialogBody>
+    
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Neutral" @onclick="CloseImportDialog">
+            Cancelar
+        </FluentButton>
+        
+        <FluentButton Appearance="Appearance.Accent"
+                     @onclick="ExecuteImport"
+                     Disabled="@(SelectedFile == null || IsUploading)">
+            @if (IsUploading)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px;" />
+                <span style="margin-left: 8px;">Importando...</span>
+            }
+            else
+            {
+                <span>Importar Clientes</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    // Parâmetros
+    [Parameter] public bool ShowImportDialog { get; set; }
+    [Parameter] public EventCallback<bool> ShowImportDialogChanged { get; set; }
+
+    // Referências
+    private FluentDialog? importDialog;
+
+    // Estado
+    private string SelectedTab = "csv";
+    private IBrowserFile? SelectedFile;
+    private bool IsUploading = false;
+    private bool UpdateExisting = true;
+    private bool SkipInvalidRows = true;
+    private string ImportError = "";
+    private ImportResult? ImportResult;
+
+    private void HandleFileSelect(InputFileChangeEventArgs e)
+    {
+        SelectedFile = e.File;
+        ImportError = "";
+        ImportResult = null!;
+    }
+
+    private void ClearFile()
+    {
+        SelectedFile = null;
+        ImportError = "";
+        ImportResult = null!;
+    }
+
+    private async Task DownloadTemplate()
+    {
+        try
+        {
+            // TODO: Implementar download do template CSV
+            ImportError = "Funcionalidade de download ainda não implementada.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao baixar template");
+            ImportError = $"Erro: {ex.Message}";
+        }
+    }
+
+    private async Task ExecuteImport()
+    {
+        if (SelectedFile == null) 
+        {
+            ImportError = "Selecione um arquivo para importar.";
+            return;
+        }
+
+        IsUploading = true;
+        ImportError = "";
+
+        try
+        {
+            using var stream = SelectedFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024); // 10MB
+
+            // Para CSV
+            if (SelectedTab == "csv")
+            {
+                var user = await AuthService.GetUserInfo();
+                var client = HttpClientFactory.CreateClient("PharmazapApi");
+                if (!string.IsNullOrEmpty(user?.Token))
+                    client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", user.Token);
+
+                using var content = new MultipartFormDataContent();
+                using var fileContent = new StreamContent(stream);
+                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+                content.Add(fileContent, "file", SelectedFile.Name);
+                content.Add(new StringContent(UpdateExisting.ToString().ToLower()), "updateExisting");
+                content.Add(new StringContent(SkipInvalidRows.ToString().ToLower()), "skipInvalidRows");
+
+                var response = await client.PostAsync("api/clientes/import-csv", content);
+                if (response.IsSuccessStatusCode)
+                {
+                    ImportResult = await response.Content.ReadFromJsonAsync<ImportResult>() ?? new ImportResult();
+                }
+                else
+                {
+                    ImportError = $"Erro ao importar: {response.StatusCode} - {await response.Content.ReadAsStringAsync()}";
+                    return;
+                }
+            }
+            else
+            {
+                ImportError = "Importação manual deve ser feita através do formulário de cadastro.";
+                return;
+            }
+
+            if (ImportResult?.Success == true)
+            {
+                await InvokeAsync(StateHasChanged);
+
+                // Fechar dialog após 2 segundos
+                await Task.Delay(2000);
+                await CloseImportDialog();
+            }
+            else
+            {
+                ImportError = ImportResult?.Errors?.FirstOrDefault() ?? "Falha na importação. Verifique os erros acima.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ImportError = $"Erro: {ex.Message}";
+            Logger.LogError(ex, "Erro na importação de clientes");
+        }
+        finally
+        {
+            IsUploading = false;
+        }
+    }
+
+    private void GoToNewClient()
+    {
+        _ = CloseImportDialog();
+        // TODO: Navegar para criação manual de cliente
+    }
+
+    private async Task CloseImportDialog()
+    {
+        ShowImportDialog = false;
+        await ShowImportDialogChanged.InvokeAsync(false);
+
+        // Resetar estado
+        SelectedFile = null;
+        ImportError = "";
+        ImportResult = null!;
+        IsUploading = false;
+    }
+}
+
+<style>
+    .import-instructions {
+        padding: 1rem;
+    }
+    
+    .upload-label {
+        display: block;
+        cursor: pointer;
+    }
+    
+    .upload-area {
+        border: 2px dashed #ccc;
+        border-radius: 8px;
+        padding: 2rem;
+        text-align: center;
+        margin: 1rem 0;
+        cursor: pointer;
+        transition: border-color 0.3s;
+    }
+    
+    .upload-area:hover {
+        border-color: var(--accent-fill-rest, #0078d4);
+    }
+    
+    .upload-prompt {
+        color: var(--neutral-foreground-hint);
+        cursor: pointer;
+    }
+    
+    .upload-prompt .subtext {
+        font-size: 0.9rem;
+        color: var(--neutral-foreground-disabled);
+    }
+    
+    .uploading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        color: var(--neutral-foreground-hint);
+    }
+    
+    .file-selected {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        background: var(--neutral-fill-secondary-rest);
+        border-radius: var(--borderRadiusSmall, 4px);
+    }
+    
+    .import-options {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+    
+    .import-result {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background: var(--neutral-fill-secondary-rest);
+        border-radius: var(--borderRadiusMedium, 8px);
+    }
+    
+    .result-summary {
+        display: flex;
+        gap: 1.5rem;
+        margin: 1rem 0;
+        flex-wrap: wrap;
+    }
+    
+    .result-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-radius: var(--borderRadiusSmall, 4px);
+        font-weight: 500;
+    }
+    
+    .result-item.success {
+        background: var(--colorStatusSuccessBackground2, #dff6dd);
+        color: var(--colorStatusSuccessForeground3, #107c10);
+    }
+    
+    .result-item.error {
+        background: var(--colorStatusDangerBackground2, #fde7e9);
+        color: var(--colorStatusDangerForeground3, #d13438);
+    }
+    
+    .result-item.total {
+        background: var(--colorBrandBackground2, #eef);
+        color: var(--colorBrandForeground2, #0078d4);
+    }
+    
+    .import-errors {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: var(--neutral-fill-rest);
+        border-radius: var(--borderRadiusSmall, 4px);
+        border-left: 4px solid var(--colorStatusDangerForeground3, #d13438);
+    }
+    
+    .import-errors h5 {
+        margin: 0 0 0.5rem 0;
+        color: var(--colorStatusDangerForeground3, #d13438);
+    }
+    
+    .import-errors ul {
+        margin: 0;
+        padding-left: 1.5rem;
+        color: var(--neutral-foreground-hint);
+    }
+    
+    .import-errors li {
+        margin: 0.25rem 0;
+        font-size: 0.9rem;
+    }
+</style>

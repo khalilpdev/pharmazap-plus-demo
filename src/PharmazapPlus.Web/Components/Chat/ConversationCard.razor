@@ -1,0 +1,370 @@
+@using PharmazapPlus.Shared.Models.Mensagens
+@using PharmazapPlus.Shared.Enums
+@using Microsoft.FluentUI.AspNetCore.Components
+@implements IDisposable
+
+<div class="conv-card @(IsSelected ? "conv-card--selected" : "") conv-card--@StatusClass" @onclick="OnCardClick"
+     role="button" tabindex="0" aria-selected="@IsSelected" aria-label="@AriaLabel" @onkeydown="HandleKeyDown">
+
+    <!-- Row 1: Canal icon + Name + Time -->
+    <div class="conv-card__header">
+        <span class="conv-card__channel-icon" title="@Atendimento.Canal">
+            <ChannelIcon Canal="@Atendimento.CanalEnum" Size="16" />
+        </span>
+        <div class="conv-card__name-block">
+            <span class="conv-card__name">@DisplayName</span>
+            <span class="conv-card__contact">@ContactDisplay</span>
+        </div>
+        <span class="conv-card__time" aria-label="Data e hora: @CardDateTime">@CardDateTime</span>
+    </div>
+
+    <!-- Row 2: Last message preview -->
+    <div class="conv-card__preview">@LastMessage</div>
+
+    <!-- Row 3: Tags (etiqueta, atendente) + Elapsed time -->
+    <div class="conv-card__footer">
+        <div class="conv-card__tags">
+            @if (Atendimento.Etiqueta != null)
+            {
+                <span class="conv-card__etiqueta-badge" title="@Atendimento.Etiqueta.Nome"
+                      style="background: color-mix(in srgb, @Atendimento.Etiqueta.Cor 15%, var(--neutral-fill-layer-rest)); border: 1px solid color-mix(in srgb, @Atendimento.Etiqueta.Cor 40%, transparent);">
+                    <span
+                    style="width: 7px; height: 7px; border-radius: 50%; background-color: @Atendimento.Etiqueta.Cor; flex-shrink: 0;"></span>
+                    <span class="conv-card__etiqueta-text">@Atendimento.Etiqueta.Nome</span>
+                </span>
+            }
+            @if (!string.IsNullOrEmpty(Atendimento.Atendente?.Nome))
+            {
+                <span class="conv-card__atendente-badge" title="Atendente: @Atendimento.Atendente.Nome">
+                    <FluentIcon Icon="@(Icons.Regular.Size12.Person)"
+                                Style="color: var(--neutral-foreground-hint); flex-shrink: 0;" />
+                    <span>@Atendimento.Atendente.Nome</span>
+                </span>
+            }
+        </div>
+        @if (!Atendimento.IsGrupo && !string.IsNullOrEmpty(ElapsedTimeText))
+        {
+            <span class="conv-card__elapsed conv-card__elapsed--@StatusClass">
+                @if (StatusEnum == AtendimentoStatusEnum.Pendente)
+                {
+                    <FluentIcon Icon="@(Icons.Regular.Size12.Clock)" Style="flex-shrink: 0;" />
+                    <span>@ElapsedTimeText</span>
+                }
+                else if (StatusEnum == AtendimentoStatusEnum.EmAndamento)
+                {
+                    <FluentIcon Icon="@(Icons.Regular.Size12.Timer)" Style="flex-shrink: 0;" />
+                    <span>@ElapsedTimeText</span>
+                }
+                else if (StatusEnum == AtendimentoStatusEnum.Finalizado)
+                {
+                    <FluentIcon Icon="@(Icons.Regular.Size12.CheckmarkCircle)" Style="flex-shrink: 0;" />
+                    <span>@ElapsedTimeText</span>
+                }
+            </span>
+        }
+    </div>
+
+    @if (ShowAssumir)
+    {
+        <div class="conv-card__action" @onclick:stopPropagation="true">
+            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="4">
+                <FluentButton Appearance="Appearance.Accent" Style="flex: 1;" OnClick="OnAssumirClick">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Headphones)" Slot="start" Color="Color.Fill" />
+                    Assumir
+                </FluentButton>
+                @if (!Atendimento.IsGrupo && StatusEnum == AtendimentoStatusEnum.Pendente && HabilitarBloqueioRemetente)
+                {
+                    <FluentButton Appearance="Appearance.Outline" 
+                                  Title="Bloquear remetente"
+                                  aria-label="Bloquear remetente e apagar todas as mensagens"
+                                  OnClick="OnBloquerClick"
+                                  Style="flex-shrink: 0;">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Prohibited)" Slot="start" />
+                        Bloquear
+                    </FluentButton>
+                }
+                @if (ShowTransferir)
+                {
+                    <FluentButton Appearance="Appearance.Outline" Title="Transferir atendimento"
+                                  aria-label="Transferir atendimento para outro atendente" OnClick="OnTransferirClick">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.PeopleCommunity)" Slot="start" />
+                        Transferir
+                    </FluentButton>
+                }
+            </FluentStack>
+        </div>
+    }
+
+    @{
+        bool canTransferirEmAndamento = ShowTransferir && StatusEnum == AtendimentoStatusEnum.EmAndamento;
+        bool showTransferirComEtiquetar = canTransferirEmAndamento && CanEtiquetar;
+        bool showOnlyTransferir = canTransferirEmAndamento && !CanEtiquetar;
+        bool showOnlyEtiquetar = CanEtiquetar && !canTransferirEmAndamento;
+    }
+
+    @* Transferir standalone (quando não há Etiquetar disponível) *@
+    @if (showOnlyTransferir)
+    {
+        <div class="conv-card__action" @onclick:stopPropagation="true" style="padding-top: 4px;">
+            <FluentButton Appearance="Appearance.Outline"
+                          Style="width: 100%;"
+                          Title="Transferir atendimento para outro atendente"
+                          aria-label="Transferir atendimento para outro atendente"
+                          OnClick="OnTransferirClick">
+                <FluentIcon Icon="@(Icons.Regular.Size16.PeopleCommunity)" Slot="start" />
+                Transferir
+            </FluentButton>
+        </div>
+    }
+
+    @* Transferir + Etiquetar lado a lado *@
+    @if (showTransferirComEtiquetar)
+    {
+        <div class="conv-card__action" @onclick:stopPropagation="true" style="padding-top: 4px;">
+            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="4">
+                <FluentButton Appearance="Appearance.Outline"
+                              Style="flex: 1;"
+                              Title="Transferir atendimento para outro atendente"
+                              aria-label="Transferir atendimento para outro atendente"
+                              OnClick="OnTransferirClick">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.PeopleCommunity)" Slot="start" />
+                    Transferir
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Outline"
+                              Style="flex: 1;"
+                              Title="Etiquetar atendimento"
+                              OnClick="OnEtiquetarClick">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Tag)" Slot="start" />
+                    Etiquetar
+                </FluentButton>
+            </FluentStack>
+        </div>
+    }
+
+    @* Etiquetar standalone *@
+    @if (showOnlyEtiquetar)
+    {
+        <div class="conv-card__action" @onclick:stopPropagation="true" style="padding-top: 4px;">
+            <FluentButton Appearance="Appearance.Outline" Style="width: 100%;" Title="Etiquetar atendimento"
+                          OnClick="OnEtiquetarClick">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Tag)" Slot="start" />
+                Etiquetar
+            </FluentButton>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Atendimento Atendimento { get; set; } = default!;
+    [Parameter] public bool IsSelected { get; set; }
+    [Parameter] public bool ShowAssumir { get; set; }
+    [Parameter] public bool ShowTransferir { get; set; }
+    [Parameter] public bool ShowAssumirEmAndamento { get; set; }
+    [Parameter] public string? CurrentUserId { get; set; }
+    [Parameter] public string? CurrentUserRole { get; set; }
+    [Parameter] public bool HabilitarBloqueioRemetente { get; set; } = false;
+    [Parameter] public EventCallback OnSelect { get; set; }
+    [Parameter] public EventCallback OnAssumir { get; set; }
+    [Parameter] public EventCallback OnTransferir { get; set; }
+    [Parameter] public EventCallback<Atendimento> OnEtiquetar { get; set; }
+    [Parameter] public EventCallback<Atendimento> OnBloquear { get; set; }
+
+    private System.Threading.Timer? _timer;
+    private string ElapsedTimeText = "";
+    private int? _currentUserIdParsed;
+
+    private AtendimentoStatusEnum StatusEnum =>
+        Enum.TryParse<AtendimentoStatusEnum>(Atendimento.Status, out var status)
+            ? status
+            : AtendimentoStatusEnum.Pendente;
+
+    private string DisplayName
+    {
+        get
+        {
+            if (Atendimento.IsGrupo)
+                return string.IsNullOrWhiteSpace(Atendimento.GrupoNome) ? "Grupo WhatsApp" : Atendimento.GrupoNome;
+
+            var nome = Atendimento.Cliente?.Nome;
+            if (!string.IsNullOrEmpty(nome))
+            {
+                var digits = new string(nome.Where(char.IsDigit).ToArray());
+                if (digits.Length >= 10 && nome.All(c => char.IsDigit(c) || c == '+' || c == ' '))
+                    return nome.FormatTelefone();
+                return nome;
+            }
+            return Atendimento.WhatsAppId.FormatContactId(Atendimento.CanalEnum) ?? "Desconhecido";
+        }
+    }
+
+    /// <summary>
+    /// Shows the contact identifier below the name only when a client name exists (avoids redundancy).
+    /// WhatsApp → formatted phone; Instagram → @username.
+    /// </summary>
+    private string ContactDisplay =>
+        Atendimento.IsGrupo
+            ? (!string.IsNullOrWhiteSpace(Atendimento.SenderName) ? Atendimento.SenderName : Atendimento.WhatsAppId)
+            : Atendimento.Cliente?.Nome != null
+            ? Atendimento.WhatsAppId.FormatContactId(Atendimento.CanalEnum)
+            : string.Empty;
+
+    private string LastMessage
+    {
+        get
+        {
+            var m = Atendimento.Mensagens?.OrderByDescending(x => x.ReceivedAt).FirstOrDefault();
+            if (m == null) return "Nova mensagem recebida";
+            return m.DisplayText ?? string.Empty;
+        }
+    }
+
+    private string CardDateTime
+    {
+        get
+        {
+            var dt = Atendimento.Mensagens?.OrderByDescending(m => m.ReceivedAt).FirstOrDefault()?.ReceivedAt
+                     ?? Atendimento.DataInicio;
+            return ToBrazilTime(dt).ToString("dd/MM HH:mm");
+        }
+    }
+
+    private string StatusClass => StatusEnum switch
+    {
+        AtendimentoStatusEnum.Pendente => "pending",
+        AtendimentoStatusEnum.EmAndamento => "active",
+        AtendimentoStatusEnum.Finalizado => "finished",
+        _ => "default"
+    };
+
+    private string AriaLabel =>
+        $"Conversa com {DisplayName}, {Atendimento.Status}, protocolo {Atendimento.Id}, {CardDateTime}";
+
+    /// <summary>
+    /// Show Etiquetar button for atendimentos em andamento or finalizados.
+    /// Allow the assigned attendant OR users with Admin/Gestor role to tag finalized atendimentos.
+    /// </summary>
+    private bool IsAdminOrGestor =>
+        string.Equals(CurrentUserRole, UserRoles.Gestor, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(CurrentUserRole, UserRoles.Administrador, StringComparison.OrdinalIgnoreCase);
+
+    private bool CanEtiquetar =>
+        (StatusEnum == AtendimentoStatusEnum.EmAndamento || StatusEnum == AtendimentoStatusEnum.Finalizado) &&
+        OnEtiquetar.HasDelegate &&
+        _currentUserIdParsed.HasValue &&
+        (Atendimento.AtendenteId == _currentUserIdParsed.Value || IsAdminOrGestor);
+
+    protected override void OnParametersSet()
+    {
+        // Cache parsed CurrentUserId to avoid repeated parsing on every render
+        _currentUserIdParsed = int.TryParse(CurrentUserId, out var uid) ? uid : null;
+
+        // Group conversations don't have SLA semantics — skip the elapsed-time pill
+        // (the orange counter shown for pending atendimentos) entirely.
+        var shouldRunTimer = !Atendimento.IsGrupo &&
+                             (StatusEnum == AtendimentoStatusEnum.EmAndamento ||
+                              StatusEnum == AtendimentoStatusEnum.Finalizado ||
+                              StatusEnum == AtendimentoStatusEnum.Pendente);
+
+        if (shouldRunTimer)
+        {
+            UpdateElapsedTime();
+            if (_timer == null)
+            {
+                _timer = new System.Threading.Timer(_ =>
+                {
+                    UpdateElapsedTime();
+                    InvokeAsync(StateHasChanged);
+                }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+            }
+        }
+        else
+        {
+            ElapsedTimeText = "";
+            _timer?.Dispose();
+            _timer = null;
+        }
+    }
+
+    private void UpdateElapsedTime()
+    {
+        TimeSpan elapsed;
+        if (StatusEnum == AtendimentoStatusEnum.Pendente)
+        {
+            elapsed = DateTime.UtcNow - Atendimento.DataInicio.ToUniversalTime();
+        }
+        else if (StatusEnum == AtendimentoStatusEnum.EmAndamento)
+        {
+            elapsed = DateTime.UtcNow - Atendimento.DataInicio.ToUniversalTime();
+        }
+        else if (StatusEnum == AtendimentoStatusEnum.Finalizado && Atendimento.DataFim.HasValue)
+        {
+            elapsed = DateTime.UtcNow - Atendimento.DataFim.Value.ToUniversalTime();
+        }
+        else
+        {
+            ElapsedTimeText = "";
+            return;
+        }
+        if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
+        ElapsedTimeText = $"{(int)elapsed.TotalHours:D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}";
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+        _timer = null;
+    }
+
+    private async Task OnCardClick()
+    {
+        if (Atendimento == null) return;
+        await OnSelect.InvokeAsync();
+    }
+
+    private async Task OnAssumirClick()
+    {
+        await OnAssumir.InvokeAsync();
+    }
+
+    private async Task OnTransferirClick()
+    {
+        await OnTransferir.InvokeAsync();
+    }
+
+    private async Task OnEtiquetarClick()
+    {
+        await OnEtiquetar.InvokeAsync(Atendimento);
+    }
+
+    private async Task OnBloquerClick()
+    {
+        await OnBloquear.InvokeAsync(Atendimento);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ")
+        {
+            await OnSelect.InvokeAsync();
+        }
+    }
+
+    private static readonly TimeZoneInfo BrazilTimeZone = ResolveBrazilTimeZone();
+
+    private static TimeZoneInfo ResolveBrazilTimeZone()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time"); }
+        catch (TimeZoneNotFoundException) { return TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo"); }
+    }
+
+    private static DateTime ToBrazilTime(DateTime dateTime)
+    {
+        var utc = dateTime.Kind switch
+        {
+            DateTimeKind.Utc => dateTime,
+            DateTimeKind.Local => dateTime.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)
+        };
+        return TimeZoneInfo.ConvertTimeFromUtc(utc, BrazilTimeZone);
+    }
+}

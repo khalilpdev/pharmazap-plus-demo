@@ -1,0 +1,366 @@
+@* PharmazapPlus.Web/Components/Pages/AtendenteFormDialog.razor *@
+
+@inject ILogger<AtendenteFormDialog> Logger
+@inject IPharmazapApiService PharmazapApiService
+
+<FluentDialog @ref="_dialog" Modal="true" Hidden="@(!Visible)" TrapFocus="true"
+              @ondialogdismiss="HandleCancel"
+              aria-label="@(Atendente == null ? "Novo Atendente" : "Editar Atendente")">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.PersonAdd)" />
+                <FluentLabel Typo="Typography.Subject">@(Atendente == null ? "Novo Atendente" : "Editar Atendente")</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="HandleCancel" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+
+    <FluentDialogBody Style="overflow: visible;">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0; overflow: visible; position: relative; z-index: 30;">
+
+            <FluentTextField @bind-Value="@_nome"
+                             Label="Nome *"
+                             Placeholder="Nome completo"
+                             Style="width: 100%;"
+                             Required="true" />
+
+            <FluentTextField Value="@_email"
+                             ValueChanged="@OnEmailChanged"
+                             @onblur="@OnEmailBlur"
+                             Immediate="true"
+                             Label="Email *"
+                             Placeholder="email@farmacia.com"
+                             Style="width: 100%;"
+                             Required="true"
+                             Autocomplete="off"
+                             Type="InputType.Email" />
+            @if (_emailInteragido && !string.IsNullOrWhiteSpace(_emailValidationMessage))
+            {
+                <FluentLabel role="alert" aria-live="polite" Style="color: var(--error-foreground, #d13438); font-size: 0.875rem;">@_emailValidationMessage</FluentLabel>
+            }
+
+            <FluentTextField Value="@_telefone"
+                             ValueChanged="@OnTelefoneChanged"
+                             @onblur="@OnTelefoneBlur"
+                             Immediate="true"
+                             Label="Telefone"
+                             Placeholder="(11) 99999-9999"
+                             Style="width: 100%;" />
+            @if (_telefoneInteragido && !string.IsNullOrWhiteSpace(_telefoneValidationMessage))
+            {
+                <FluentLabel role="alert" aria-live="polite" Style="color: var(--error-foreground, #d13438); font-size: 0.875rem;">@_telefoneValidationMessage</FluentLabel>
+            }
+
+            @if (Atendente == null)
+            {
+                <FluentTextField @bind-Value="@_password"
+                                 Label="Senha *"
+                                 Placeholder="Mínimo 6 caracteres"
+                                 Style="width: 100%;"
+                                 Required="true"
+                                 Autocomplete="new-password"
+                                 TextFieldType="TextFieldType.Password" />
+            }
+
+            <FluentSelect TOption="string"
+                          @bind-Value="@_turno"
+                          Label="Turno"
+                          Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                <FluentOption TOption="string" Value="Manhã">Manhã</FluentOption>
+                <FluentOption TOption="string" Value="Tarde">Tarde</FluentOption>
+                <FluentOption TOption="string" Value="Noite">Noite</FluentOption>
+                <FluentOption TOption="string" Value="Integral">Integral</FluentOption>
+            </FluentSelect>
+
+            <div style="overflow: visible; position: relative; z-index: 30;">
+                <FluentSelect TOption="string"
+                              Value="@_departamentoIdValue"
+                              ValueChanged="@OnDepartamentoChanged"
+                              Label="Departamento"
+                              Style="width: 100%; position: relative; z-index: 30; overflow: visible;"
+                              Disabled="@_departamentosLoading">
+                    <FluentOption TOption="string" Value="">Selecione</FluentOption>
+                    @foreach (var departamento in _departamentos)
+                    {
+                        <FluentOption TOption="string" Value="@departamento.Id.ToString()">@departamento.Nome</FluentOption>
+                    }
+                </FluentSelect>
+            </div>
+
+            <FluentCheckbox @bind-Value="@_recebeNotificacoes">
+                Recebe Notificações
+            </FluentCheckbox>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_errorMessage</FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="HandleCancel" Disabled="@_isSaving">
+            Cancelar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="HandleSave" Disabled="@_isSaving">
+            @if (_isSaving)
+            {
+                <FluentProgressRing Style="width:16px; height:16px;" />
+                <span style="margin-left:0.5rem;">Salvando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Save)" Slot="start" Color="Color.Fill" />
+                <span>@(Atendente == null ? "Criar" : "Salvar")</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public AtendenteDto? Atendente { get; set; }
+    [Parameter] public EventCallback<(bool IsNew, CreateAtendenteDto? Create, UpdateAtendenteDto? Update)> OnSave { get; set; }
+
+    private FluentDialog? _dialog;
+    private string _nome = "";
+    private string _email = "";
+    private string _telefone = "";
+    private string _password = "";
+    private string _turno = "Integral";
+    private int? _departamentoId;
+    private string _departamentoIdValue = "";
+    private bool _recebeNotificacoes = true;
+    private bool _isSaving = false;
+    private bool _departamentosLoading = false;
+    private string _errorMessage = "";
+    private string _emailValidationMessage = "";
+    private string _telefoneValidationMessage = "";
+    private bool _emailInteragido = false;
+    private bool _telefoneInteragido = false;
+    private bool _wasVisible = false;
+    private int? _lastAtendenteId = null;
+    private List<DepartamentoDto> _departamentos = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var atendenteId = Atendente?.Id;
+
+        if (Visible && (!_wasVisible || _lastAtendenteId != atendenteId))
+        {
+            if (Atendente != null)
+            {
+                _nome = Atendente.Nome;
+                _email = Atendente.Email;
+                _telefone = Atendente.Telefone.MaskTelefoneInput();
+                _turno = Atendente.Turno ?? "Integral";
+                _departamentoId = Atendente.DepartamentoId;
+                _departamentoIdValue = Atendente.DepartamentoId?.ToString() ?? "";
+                _recebeNotificacoes = Atendente.RecebeNotificacoes;
+            }
+            else
+            {
+                _nome = "";
+                _email = "";
+                _telefone = "";
+                _password = "";
+                _turno = "Integral";
+                _departamentoId = null;
+                _departamentoIdValue = "";
+                _recebeNotificacoes = true;
+            }
+
+            await LoadDepartamentosAsync();
+        }
+        _errorMessage = "";
+        _emailValidationMessage = "";
+        _telefoneValidationMessage = "";
+        _emailInteragido = false;
+        _telefoneInteragido = false;
+        _isSaving = false;
+        _wasVisible = Visible;
+        _lastAtendenteId = atendenteId;
+    }
+
+    private void OnEmailChanged(string? value)
+    {
+        _email = value ?? "";
+        ValidateEmailField(showRequired: _emailInteragido);
+    }
+
+    private void OnEmailBlur(FocusEventArgs _)
+    {
+        _emailInteragido = true;
+        ValidateEmailField(showRequired: true);
+    }
+
+    private void OnTelefoneChanged(string? value)
+    {
+        _telefone = (value ?? "").MaskTelefoneInput();
+        ValidateTelefoneField();
+    }
+
+    private void OnTelefoneBlur(FocusEventArgs _)
+    {
+        _telefoneInteragido = true;
+        ValidateTelefoneField();
+    }
+
+    private void OnDepartamentoChanged(string? value)
+    {
+        _departamentoIdValue = value ?? "";
+        _departamentoId = int.TryParse(value, out var departamentoId) ? departamentoId : null;
+    }
+
+    private void ValidateEmailField(bool showRequired)
+    {
+        var email = _email.Trim();
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            _emailValidationMessage = showRequired ? "Email é obrigatório." : "";
+            return;
+        }
+
+        _emailValidationMessage = IsEmailValido(email) ? "" : "Informe um email válido.";
+    }
+
+    private void ValidateTelefoneField()
+    {
+        if (string.IsNullOrWhiteSpace(_telefone))
+        {
+            _telefoneValidationMessage = "";
+            return;
+        }
+
+        var telefoneSanitizado = _telefone.SanitizeDigits(11);
+        _telefoneValidationMessage = telefoneSanitizado.Length == 11
+            ? ""
+            : "Informe um telefone válido com DDD.";
+    }
+
+    private static bool IsEmailValido(string email)
+    {
+        return System.Net.Mail.MailAddress.TryCreate(email, out var endereco)
+            && endereco.Address.Equals(email, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool ValidateForm()
+    {
+        _errorMessage = "";
+        _emailInteragido = true;
+        _telefoneInteragido = true;
+        ValidateEmailField(showRequired: true);
+        ValidateTelefoneField();
+
+        if (string.IsNullOrWhiteSpace(_nome))
+        {
+            _errorMessage = "Nome é obrigatório.";
+            return false;
+        }
+        if (!string.IsNullOrWhiteSpace(_emailValidationMessage))
+        {
+            _errorMessage = _emailValidationMessage;
+            return false;
+        }
+        if (!string.IsNullOrWhiteSpace(_telefoneValidationMessage))
+        {
+            _errorMessage = _telefoneValidationMessage;
+            return false;
+        }
+        if (Atendente == null && string.IsNullOrWhiteSpace(_password))
+        {
+            _errorMessage = "Senha é obrigatória.";
+            return false;
+        }
+        if (Atendente == null && _password.Length < 6)
+        {
+            _errorMessage = "A senha deve ter no mínimo 6 caracteres.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task HandleSave()
+    {
+        if (!ValidateForm())
+        {
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            if (Atendente == null)
+            {
+                var create = new CreateAtendenteDto
+                {
+                    Nome = _nome.Trim(),
+                    Email = _email.Trim(),
+                    Password = _password,
+                    Telefone = string.IsNullOrWhiteSpace(_telefone) ? null : _telefone.SanitizeDigits(11),
+                    Turno = _turno,
+                    RecebeNotificacoes = _recebeNotificacoes,
+                    DepartamentoId = _departamentoId
+                };
+                await OnSave.InvokeAsync((true, create, null));
+            }
+            else
+            {
+                var update = new UpdateAtendenteDto
+                {
+                    Nome = _nome.Trim(),
+                    Email = _email.Trim(),
+                    Telefone = string.IsNullOrWhiteSpace(_telefone) ? null : _telefone.SanitizeDigits(11),
+                    Turno = _turno,
+                    RecebeNotificacoes = _recebeNotificacoes,
+                    DepartamentoId = _departamentoId
+                };
+                await OnSave.InvokeAsync((false, null, update));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private async Task LoadDepartamentosAsync()
+    {
+        _departamentosLoading = true;
+
+        try
+        {
+            _departamentos = await PharmazapApiService.GetDepartamentosAsync(ativo: true);
+
+            if (_departamentoId.HasValue && !_departamentos.Any(d => d.Id == _departamentoId.Value))
+            {
+                _departamentoId = null;
+                _departamentoIdValue = "";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao carregar departamentos para o formulário de atendente");
+            _departamentos = new();
+            _departamentoId = null;
+            _departamentoIdValue = "";
+        }
+        finally
+        {
+            _departamentosLoading = false;
+        }
+    }
+}

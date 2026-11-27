@@ -1,0 +1,1444 @@
+@page "/messages"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize]
+@implements IAsyncDisposable
+
+@using PharmazapPlus.Web.Components.Chat
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<Messages> Logger
+@inject IPharmazapApiService PharmazapApiService
+@inject IToastService ToastService
+@inject IConfiguration Configuration
+
+<PageTitle>Mensagens - Pharmazap Plus</PageTitle>
+
+@if (CurrentUser == null)
+{
+    <div class="msg-loading">
+        <FluentProgressRing />
+        <FluentLabel Color="Color.Lightweight">Carregando mensagens...</FluentLabel>
+    </div>
+}
+else
+{
+    <div class="msg-page">
+
+        <!-- Header -->
+        <div class="msg-header">
+            <div class="msg-header__title">
+                <FluentIcon Icon="@(Icons.Regular.Size24.Chat)" Color="Color.Accent" />
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="1">
+                    <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Atendimentos</FluentLabel>
+                    <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">@TotalLabel</FluentLabel>
+                </FluentStack>
+            </div>
+
+            <div class="msg-status-filters" role="group" aria-label="Filtros de status">
+                <label class="msg-status-filter">
+                    <input type="checkbox" @bind="_filterGrupos" @bind:after="OnFilterChanged" />
+                    <span class="msg-status-filter__dot msg-status-filter__dot--pending"></span>
+                    <span>Grupos</span>
+                </label>
+                <label class="msg-status-filter">
+                    <input type="checkbox" @bind="_filterPendentes" @bind:after="OnFilterChanged" />
+                    <span class="msg-status-filter__dot msg-status-filter__dot--pending"></span>
+                    <span>Pendentes</span>
+                </label>
+                <label class="msg-status-filter">
+                    <input type="checkbox" @bind="_filterEmAndamento" @bind:after="OnFilterChanged" />
+                    <span class="msg-status-filter__dot msg-status-filter__dot--active"></span>
+                    <span>Em Andamento</span>
+                </label>
+                <label class="msg-status-filter">
+                    <input type="checkbox" @bind="_filterFinalizados" @bind:after="OnFilterChanged" />
+                    <span class="msg-status-filter__dot msg-status-filter__dot--finished"></span>
+                    <span>Finalizados</span>
+                </label>
+            </div>
+
+            <div class="msg-header__actions">
+                <div class="msg-view-toggle msg-board-toggle" role="group" aria-label="Modo de visualização">
+                    <FluentButton Appearance="@(ViewMode == MessagesViewMode.List ? Appearance.Accent : Appearance.Stealth)"
+                                  Title="Visualização em lista"
+                                  @onclick="@(() => SetViewMode(MessagesViewMode.List))">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.TextBulletListLtr)"
+                                    Color="@(ViewMode == MessagesViewMode.List ? Color.Fill : Color.Neutral)" />
+                    </FluentButton>
+                    <FluentButton Appearance="@(ViewMode == MessagesViewMode.Board ? Appearance.Accent : Appearance.Stealth)"
+                                  Title="Visualização em quadro"
+                                  @onclick="@(() => SetViewMode(MessagesViewMode.Board))">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.GridKanban)"
+                                    Color="@(ViewMode == MessagesViewMode.Board ? Color.Fill : Color.Neutral)" />
+                    </FluentButton>
+                </div>
+
+                <FluentButton Appearance="Appearance.Outline"
+                              Title="Atualizar atendimentos"
+                              @onclick="RefreshAtendimentos">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.ArrowSync)" Slot="start" Color="Color.Neutral" />
+                    Atualizar
+                </FluentButton>
+            </div>
+        </div>
+
+        @if (ViewMode == MessagesViewMode.Board)
+        {
+            <!-- Board / Kanban view -->
+            <div class="msg-board" role="region" aria-label="Quadro de atendimentos">
+
+                <!-- Pending / group columns -->
+                @if (_filterGrupos)
+                {
+                <BoardColumn Title="Grupos"
+                             Count="@AtendimentosPendentesGruposFiltrados.Count"
+                             StatusClass="pending"
+                             IsLoading="@IsLoadingAtendimentos">
+                    @foreach (var atendimento in AtendimentosPendentesGruposFiltrados)
+                    {
+                        <ConversationCard Atendimento="@atendimento"
+                                                   OnBloquear="@((a) => ShowBloqueDialog(a))" HabilitarBloqueioRemetente="@_habilitarBloqueioRemetente"
+                                         IsSelected="@(SelectedAtendimento?.Id == atendimento.Id)"
+                                         ShowAssumir="false"
+                                         ShowTransferir="false"
+                                         OnSelect="@(() => SelectAtendimento(atendimento))" />
+                    }
+                </BoardColumn>
+                }
+                @if (_filterPendentes)
+                {
+                <BoardColumn Title="Pendentes"
+                             Count="@AtendimentosPendentesIndividuaisFiltrados.Count"
+                             StatusClass="pending"
+                             IsLoading="@IsLoadingAtendimentos">
+                    @foreach (var atendimento in AtendimentosPendentesIndividuaisFiltrados)
+                    {
+                        <ConversationCard Atendimento="@atendimento"
+                                         IsSelected="@(SelectedAtendimento?.Id == atendimento.Id)"
+                                         ShowAssumir="@CanAssumirAtendimento"
+                                         ShowTransferir="@IsAdminOrGestor"
+                                         CurrentUserRole="@CurrentUser?.Role"
+                                         OnSelect="@(() => SelectAtendimento(atendimento))"
+                                         OnAssumir="@(() => AssumirAtendimento(atendimento))"
+                                         OnTransferir="@(() => InitiateTransfer(atendimento))"
+                                         OnBloquear="@((a) => ShowBloqueDialog(a))"
+                                         HabilitarBloqueioRemetente="@_habilitarBloqueioRemetente" />
+                    }
+                </BoardColumn>
+                }
+
+                <!-- Active columns grouped by attendant -->
+                @if (_filterEmAndamento)
+                {
+                @if (IsAdminOrGestor && _boardAtendentes.Count > 0)
+                {
+                    // Admin/Gestor: show a column per registered atendente (even those with 0 active)
+                    @foreach (var atendente in _boardAtendentes.Where(a => a.Ativo).OrderBy(a => a.Nome))
+                    {
+                        var atendenteAtivos = AtendimentosAtivosFiltrados
+                            .Where(a => a.AtendenteId == atendente.Id)
+                            .ToList();
+                        <BoardColumn Title="@atendente.Nome"
+                                     Count="@atendenteAtivos.Count"
+                                     StatusClass="active"
+                                     IsLoading="@IsLoadingAtendimentos">
+                            @foreach (var atendimento in atendenteAtivos)
+                            {
+                                <ConversationCard Atendimento="@atendimento"
+                                                   OnBloquear="@((a) => ShowBloqueDialog(a))" HabilitarBloqueioRemetente="@_habilitarBloqueioRemetente"
+                                         IsSelected="@(SelectedAtendimento?.Id == atendimento.Id)"
+                                                  ShowAssumir="false"
+                                                  ShowAssumirEmAndamento="@IsAdminOrGestor"
+                                                  ShowTransferir="@IsAdminOrGestor"
+                                                  CurrentUserId="@CurrentUser?.Id"
+                                                  CurrentUserRole="@CurrentUser?.Role"
+                                                  OnSelect="@(() => SelectAtendimento(atendimento))"
+                                                  OnAssumir="@(() => AssumirAtendimento(atendimento))"
+                                                  OnTransferir="@(() => InitiateTransfer(atendimento))"
+                                                  OnEtiquetar="@InitiateEtiquetar" />
+                            }
+                        </BoardColumn>
+                    }
+                    // Show orphan active atendimentos (assigned to someone not in registered atendentes list, e.g. admins)
+                    // Atendimentos with no Atendente name are data-integrity issues and must not appear in the board
+                    @foreach (var group in BoardOrphanAtivos.Where(a => !string.IsNullOrEmpty(a.Atendente?.Nome)).GroupBy(a => a.Atendente!.Nome).OrderBy(g => g.Key))
+                    {
+                        var orphanGroup = group.ToList();
+                        <BoardColumn Title="@group.Key"
+                                     Count="@orphanGroup.Count"
+                                     StatusClass="active"
+                                     IsLoading="@IsLoadingAtendimentos">
+                            @foreach (var atendimento in orphanGroup)
+                            {
+                                <ConversationCard Atendimento="@atendimento"
+                                                   OnBloquear="@((a) => ShowBloqueDialog(a))" HabilitarBloqueioRemetente="@_habilitarBloqueioRemetente"
+                                         IsSelected="@(SelectedAtendimento?.Id == atendimento.Id)"
+                                                  ShowAssumir="false"
+                                                  ShowAssumirEmAndamento="@IsAdminOrGestor"
+                                                  ShowTransferir="@IsAdminOrGestor"
+                                                  CurrentUserId="@CurrentUser?.Id"
+                                                  CurrentUserRole="@CurrentUser?.Role"
+                                                  OnSelect="@(() => SelectAtendimento(atendimento))"
+                                                  OnAssumir="@(() => AssumirAtendimento(atendimento))"
+                                                  OnTransferir="@(() => InitiateTransfer(atendimento))"
+                                                  OnEtiquetar="@InitiateEtiquetar" />
+                            }
+                        </BoardColumn>
+                    }
+                }
+                else
+                {
+                    // Atendente: show their own active atendimentos in a single group
+                    @foreach (var group in AtendimentosAtivosFiltrados
+                            .GroupBy(a => a.Atendente?.Nome ?? "Ativos")
+                            .OrderBy(g => g.Key))
+                    {
+                        <BoardColumn Title="@group.Key"
+                                     Count="@group.Count()"
+                                     StatusClass="active"
+                                     IsLoading="@IsLoadingAtendimentos">
+                            @foreach (var atendimento in group)
+                            {
+                                <ConversationCard Atendimento="@atendimento"
+                                                   OnBloquear="@((a) => ShowBloqueDialog(a))" HabilitarBloqueioRemetente="@_habilitarBloqueioRemetente"
+                                         IsSelected="@(SelectedAtendimento?.Id == atendimento.Id)"
+                                                  ShowAssumir="false"
+                                                  ShowTransferir="@IsAdminOrGestor"
+                                                  CurrentUserId="@CurrentUser?.Id"
+                                                  OnSelect="@(() => SelectAtendimento(atendimento))"
+                                                  OnAssumir="@(() => AssumirAtendimento(atendimento))"
+                                                  OnTransferir="@(() => InitiateTransfer(atendimento))"
+                                                  OnEtiquetar="@InitiateEtiquetar" />
+                            }
+                        </BoardColumn>
+                    }
+                }
+                }
+
+                <!-- Finalized column -->
+                @if (_filterFinalizados)
+                {
+                <BoardColumn Title="Finalizados"
+                             Count="@AtendimentosFinalizadosFiltrados.Count"
+                             StatusClass="finished"
+                             IsLoading="false">
+                    @foreach (var atendimento in AtendimentosFinalizadosFiltrados.Take(20))
+                    {
+                        <ConversationCard Atendimento="@atendimento"
+                                                   OnBloquear="@((a) => ShowBloqueDialog(a))" HabilitarBloqueioRemetente="@_habilitarBloqueioRemetente"
+                                         IsSelected="@(SelectedAtendimento?.Id == atendimento.Id)"
+                                          ShowAssumir="false"
+                                          CurrentUserId="@CurrentUser?.Id"
+                                          CurrentUserRole="@CurrentUser?.Role"
+                                          OnSelect="@(() => SelectAtendimento(atendimento))"
+                                          OnAssumir="@(() => { })"
+                                          OnEtiquetar="@InitiateEtiquetar" />
+                    }
+                </BoardColumn>
+                }
+
+            </div>
+
+            <!-- Chat panel overlay for board view -->
+            @if (SelectedAtendimento != null)
+            {
+                <div style="position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,0.3); display: flex; align-items: stretch; justify-content: flex-end;"
+                     @onclick="CloseChat">
+                    <div style="width: min(520px, 100%); display: flex; flex-direction: column; background: var(--neutral-fill-layer-rest);"
+                         @onclick:stopPropagation="true">
+                        <div style="padding: 8px 12px; border-bottom: 1px solid var(--pz-border-divider); display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                            <FluentButton Appearance="Appearance.Stealth" @onclick="CloseChat" aria-label="Fechar chat">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                            </FluentButton>
+                            <FluentLabel Weight="FontWeight.Bold">
+                                @(SelectedAtendimento.Cliente?.Nome ?? SelectedAtendimento.WhatsAppId)
+                            </FluentLabel>
+                        </div>
+                        <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
+                            <ChatWindow CurrentAtendimento="@SelectedAtendimento"
+                                        CurrentUserId="@CurrentUser?.Id"
+                                        CurrentUserRole="@CurrentUser?.Role"
+                                        OnAtendimentoFinalizado="@HandleAtendimentoFinalizado"
+                                        OnEtiquetar="@InitiateEtiquetar"
+                                        OnAssumirRequested="@AssumirAtendimento"
+                                        OnTransferirRequested="@InitiateTransfer"
+                                        OnVoltarPendenteRequested="@VoltarAtendimentoPendente"
+                                        OnClienteUpdated="@HandleClienteUpdated" />
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            <!-- List view (default + mobile) -->
+            <div class="msg-content @(SelectedAtendimento != null ? "msg-content--chat-open" : "")">
+
+                <!-- Sidebar -->
+                <div class="msg-sidebar">
+
+                    <div class="msg-sidebar__search">
+                        <FluentTextField @bind-Value="@SearchQuery"
+                                         @bind-Value:after="HandleSearch"
+                                         Placeholder="Buscar conversas..."
+                                         Style="width: 100%;"
+                                         aria-label="Buscar conversas">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Search)" Slot="start" />
+                            @if (!string.IsNullOrEmpty(SearchQuery))
+                            {
+                                <FluentButton Slot="end"
+                                              Appearance="Appearance.Stealth"
+                                              Title="Limpar busca"
+                                              aria-label="Limpar busca"
+                                              Style="padding: 0; min-width: unset; height: unset;"
+                                              @onclick="ClearSearch">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" Style="color: var(--neutral-foreground-hint);" />
+                                </FluentButton>
+                            }
+                        </FluentTextField>
+                    </div>
+
+                    <!-- Tab navigation -->
+                    <div class="msg-sidebar__tabnav" role="tablist">
+                        @if (_filterGrupos)
+                        {
+                            <button class="msg-sidebar__tab @(ActiveTab == Consts.Tabs.PendingGroups ? "msg-sidebar__tab--active" : "")"
+                                    role="tab"
+                                    aria-selected="@(ActiveTab == Consts.Tabs.PendingGroups ? "true" : "false")"
+                                    @onclick="@(() => SetActiveTab(Consts.Tabs.PendingGroups))">
+                                <span class="msg-sidebar__tab-label">Grupos</span>
+                                @if (AtendimentosPendentesGrupos.Count > 0)
+                                {
+                                    <FluentCounterBadge Count="@AtendimentosPendentesGrupos.Count"
+                                                        Class="msg-sidebar__tab-badge"
+                                                        Appearance="Appearance.Accent"
+                                                        Max="99" />
+                                }
+                            </button>
+                        }
+                        @if (_filterPendentes)
+                        {
+                            <button class="msg-sidebar__tab @(ActiveTab == Consts.Tabs.Pending ? "msg-sidebar__tab--active" : "")"
+                                    role="tab"
+                                    aria-selected="@(ActiveTab == Consts.Tabs.Pending ? "true" : "false")"
+                                    @onclick="@(() => SetActiveTab(Consts.Tabs.Pending))">
+                                <span class="msg-sidebar__tab-label">Pendentes</span>
+                                @if (AtendimentosPendentesIndividuais.Count > 0)
+                                {
+                                    <FluentCounterBadge Count="@AtendimentosPendentesIndividuais.Count"
+                                                        Class="msg-sidebar__tab-badge"
+                                                        Appearance="Appearance.Accent"
+                                                        Max="99" />
+                                }
+                            </button>
+                        }
+                        @if (_filterEmAndamento)
+                        {
+                            <button class="msg-sidebar__tab @(ActiveTab == Consts.Tabs.Active ? "msg-sidebar__tab--active" : "")"
+                                    role="tab"
+                                    aria-selected="@(ActiveTab == Consts.Tabs.Active ? "true" : "false")"
+                                    @onclick="@(() => SetActiveTab(Consts.Tabs.Active))">
+                                <span class="msg-sidebar__tab-label">Ativos</span>
+                                @if (AtendimentosAtivos.Count > 0)
+                                {
+                                    <FluentCounterBadge Count="@AtendimentosAtivos.Count"
+                                                        Class="msg-sidebar__tab-badge"
+                                                        Appearance="Appearance.Accent"
+                                                        Max="99" />
+                                }
+                            </button>
+                        }
+                        @if (_filterFinalizados)
+                        {
+                            <button class="msg-sidebar__tab @(ActiveTab == Consts.Tabs.Finalized ? "msg-sidebar__tab--active" : "")"
+                                    role="tab"
+                                    aria-selected="@(ActiveTab == Consts.Tabs.Finalized ? "true" : "false")"
+                                    @onclick="@(() => SetActiveTab(Consts.Tabs.Finalized))">
+                                <span class="msg-sidebar__tab-label">Finalizados</span>
+                            </button>
+                        }
+                    </div>
+
+                    <!-- Tab content -->
+                    @if (ActiveTab == Consts.Tabs.Pending && _filterPendentes)
+                    {
+                        <div class="msg-sidebar__list" role="tabpanel">
+                            @if (IsLoadingAtendimentos)
+                            {
+                                <div class="msg-loading">
+                                    <FluentProgressRing />
+                                    <FluentLabel Color="Color.Lightweight">Carregando...</FluentLabel>
+                                </div>
+                            }
+                            else if (!AtendimentosPendentesIndividuaisFiltrados.Any())
+                            {
+                                <div class="msg-empty">
+                                    <FluentIcon Icon="@(Icons.Regular.Size48.CheckmarkCircle)" Color="Color.Lightweight" />
+                                    <FluentLabel Color="Color.Lightweight">
+                                        @(string.IsNullOrWhiteSpace(SearchQuery)
+                                            ? "Nenhum atendimento pendente de contato"
+                                            : "Nenhum resultado encontrado")
+                                    </FluentLabel>
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var atendimento in AtendimentosPendentesIndividuaisFiltrados)
+                                {
+                                    <ConversationCard Atendimento="@atendimento"
+                                                   OnBloquear="@((a) => ShowBloqueDialog(a))" HabilitarBloqueioRemetente="@_habilitarBloqueioRemetente"
+                                         IsSelected="@(SelectedAtendimento?.Id == atendimento.Id)"
+                                                     ShowAssumir="@CanAssumirAtendimento"
+                                                     ShowTransferir="@IsAdminOrGestor"
+                                                     OnSelect="@(() => SelectAtendimento(atendimento))"
+                                                     OnAssumir="@(() => AssumirAtendimento(atendimento))"
+                                                     OnTransferir="@(() => InitiateTransfer(atendimento))" />
+                                }
+                            }
+                        </div>
+                    }
+                    else if (ActiveTab == Consts.Tabs.PendingGroups && _filterGrupos)
+                    {
+                        <div class="msg-sidebar__list" role="tabpanel">
+                            @if (IsLoadingAtendimentos)
+                            {
+                                <div class="msg-loading">
+                                    <FluentProgressRing />
+                                    <FluentLabel Color="Color.Lightweight">Carregando...</FluentLabel>
+                                </div>
+                            }
+                            else if (!AtendimentosPendentesGruposFiltrados.Any())
+                            {
+                                <div class="msg-empty">
+                                    <FluentIcon Icon="@(Icons.Regular.Size48.CheckmarkCircle)" Color="Color.Lightweight" />
+                                    <FluentLabel Color="Color.Lightweight">
+                                        @(string.IsNullOrWhiteSpace(SearchQuery)
+                                            ? "Nenhum atendimento pendente de grupo"
+                                            : "Nenhum resultado encontrado")
+                                    </FluentLabel>
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var atendimento in AtendimentosPendentesGruposFiltrados)
+                                {
+                                    <ConversationCard Atendimento="@atendimento"
+                                                   OnBloquear="@((a) => ShowBloqueDialog(a))" HabilitarBloqueioRemetente="@_habilitarBloqueioRemetente"
+                                         IsSelected="@(SelectedAtendimento?.Id == atendimento.Id)"
+                                                      ShowAssumir="false"
+                                                      ShowTransferir="false"
+                                                      OnSelect="@(() => SelectAtendimento(atendimento))" />
+                                }
+                            }
+                        </div>
+                    }
+                    else if (ActiveTab == Consts.Tabs.Active && _filterEmAndamento)
+                    {
+                        <div class="msg-sidebar__list" role="tabpanel">
+                            @if (IsLoadingAtendimentos)
+                            {
+                                <div class="msg-loading">
+                                    <FluentProgressRing />
+                                    <FluentLabel Color="Color.Lightweight">Carregando...</FluentLabel>
+                                </div>
+                            }
+                            else if (!AtendimentosAtivosFiltrados.Any())
+                            {
+                                <div class="msg-empty">
+                                    <FluentIcon Icon="@(Icons.Regular.Size48.ChatEmpty)" Color="Color.Lightweight" />
+                                    <FluentLabel Color="Color.Lightweight">
+                                        @(string.IsNullOrWhiteSpace(SearchQuery)
+                                            ? "Nenhum atendimento ativo"
+                                            : "Nenhum resultado encontrado")
+                                    </FluentLabel>
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var atendimento in AtendimentosAtivosFiltrados)
+                                {
+                                    <ConversationCard Atendimento="@atendimento"
+                                                   OnBloquear="@((a) => ShowBloqueDialog(a))" HabilitarBloqueioRemetente="@_habilitarBloqueioRemetente"
+                                         IsSelected="@(SelectedAtendimento?.Id == atendimento.Id)"
+                                                      ShowAssumir="false"
+                                                      ShowAssumirEmAndamento="@IsAdminOrGestor"
+                                                      ShowTransferir="@IsAdminOrGestor"
+                                                      CurrentUserId="@CurrentUser?.Id"
+                                                      CurrentUserRole="@CurrentUser?.Role"
+                                                      OnSelect="@(() => SelectAtendimento(atendimento))"
+                                                      OnAssumir="@(() => AssumirAtendimento(atendimento))"
+                                                      OnTransferir="@(() => InitiateTransfer(atendimento))"
+                                                      OnEtiquetar="@InitiateEtiquetar" />
+                                }
+                            }
+                        </div>
+                    }
+                    else if (ActiveTab == Consts.Tabs.Finalized && _filterFinalizados)
+                    {
+                        <div class="msg-sidebar__list" role="tabpanel">
+                            @if (!AtendimentosFinalizadosFiltrados.Any())
+                            {
+                                <div class="msg-empty">
+                                    <FluentIcon Icon="@(Icons.Regular.Size48.CheckmarkCircle)" Color="Color.Lightweight" />
+                                    <FluentLabel Color="Color.Lightweight">
+                                        @(string.IsNullOrWhiteSpace(SearchQuery)
+                                            ? "Nenhum atendimento finalizado"
+                                            : "Nenhum resultado encontrado")
+                                    </FluentLabel>
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var atendimento in AtendimentosFinalizadosFiltrados.Take(20))
+                                {
+                                    <ConversationCard Atendimento="@atendimento"
+                                                   OnBloquear="@((a) => ShowBloqueDialog(a))" HabilitarBloqueioRemetente="@_habilitarBloqueioRemetente"
+                                         IsSelected="@(SelectedAtendimento?.Id == atendimento.Id)"
+                                                      ShowAssumir="false"
+                                                      CurrentUserId="@CurrentUser?.Id"
+                                                      CurrentUserRole="@CurrentUser?.Role"
+                                                      OnSelect="@(() => SelectAtendimento(atendimento))"
+                                                      OnAssumir="@(() => { })"
+                                                      OnEtiquetar="@InitiateEtiquetar" />
+                                }
+                            }
+                        </div>
+                    }
+                </div>
+
+                <!-- Chat panel -->
+                <div class="msg-chat @(SelectedAtendimento == null ? "msg-chat--empty" : "")">
+                    @if (SelectedAtendimento != null)
+                    {
+                        <div class="msg-mobile-back">
+                            <FluentButton Appearance="Appearance.Stealth"
+                                          Class="msg-mobile-back__button"
+                                          @onclick="CloseChat"
+                                          aria-label="Voltar para lista">
+                                <FluentIcon Icon="@(Icons.Regular.Size20.ArrowLeft)" />
+                                Voltar
+                            </FluentButton>
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="1" class="msg-mobile-back__info">
+                                <FluentLabel class="msg-mobile-back__info-item">
+                                    <strong>Telefone:</strong> @MobileBackTelefone
+                                </FluentLabel>
+                                <FluentLabel class="msg-mobile-back__info-item">
+                                    <strong>Atendido por:</strong> @MobileBackAtendidoPor
+                                </FluentLabel>
+                            </FluentStack>
+                        </div>
+                        <ChatWindow CurrentAtendimento="@SelectedAtendimento"
+                                    CurrentUserId="@CurrentUser?.Id"
+                                    CurrentUserRole="@CurrentUser?.Role"
+                                    OnAtendimentoFinalizado="@HandleAtendimentoFinalizado"
+                                    OnEtiquetar="@InitiateEtiquetar"
+                                    OnAssumirRequested="@AssumirAtendimento"
+                                    OnTransferirRequested="@InitiateTransfer"
+                                    OnVoltarPendenteRequested="@VoltarAtendimentoPendente"
+                                    OnClienteUpdated="@HandleClienteUpdated" />
+                    }
+                    else
+                    {
+                        <div class="msg-empty" style="height: 100%;">
+                            <FluentIcon Icon="@(Icons.Regular.Size48.ChatEmpty)" Color="Color.Lightweight" />
+                            <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Selecione um atendimento</FluentLabel>
+                            <FluentLabel Color="Color.Lightweight">Escolha uma conversa da lista ao lado</FluentLabel>
+                        </div>
+                    }
+                </div>
+
+            </div>
+        }
+
+        <!-- Transfer Dialog -->
+        <FluentDialog @ref="_transferDialog" Modal="true" Hidden="@(!_showTransferDialog)" TrapFocus="true"
+                      @ondialogdismiss="CancelTransfer"
+                      aria-label="Transferir Atendimento">
+            <FluentDialogHeader>
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.PeopleCommunity)" />
+                        <FluentLabel Typo="Typography.Subject">Transferir Atendimento</FluentLabel>
+                    </FluentStack>
+                    <div style="margin-left:auto;">
+                        <FluentButton Appearance="Appearance.Stealth" @onclick="CancelTransfer" aria-label="Fechar" Title="Fechar">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                        </FluentButton>
+                    </div>
+                </FluentStack>
+            </FluentDialogHeader>
+            <FluentDialogBody Style="overflow: visible;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="overflow: visible; position: relative; z-index: 30;">
+                    @if (_transferAtendimento != null)
+                    {
+                        <FluentLabel>
+                            Atendimento <strong>#@_transferAtendimento.Id</strong>
+                            (@(_transferAtendimento.Cliente?.Nome
+                                ?? _transferAtendimento.WhatsAppId.FormatContactId(_transferAtendimento.CanalEnum)
+                                ?? _transferAtendimento.WhatsAppId))
+                        </FluentLabel>
+                    }
+                    <FluentLabel>Selecione o atendente de destino:</FluentLabel>
+                    @if (_isLoadingAtendentes)
+                    {
+                        <FluentProgressRing Style="width: 24px; height: 24px;" />
+                    }
+                    else if (_atendentesDisponiveis.Count == 0)
+                    {
+                        <FluentLabel Color="Color.Lightweight">Nenhum atendente disponível</FluentLabel>
+                    }
+                    else
+                    {
+                        <div role="radiogroup" aria-label="Selecionar atendente">
+                        @foreach (var atendente in _atendentesDisponiveis)
+                        {
+                            var isSelected = _selectedAtendenteId == atendente.Id;
+                            <div style="display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 4px; cursor: pointer;
+                                        background: @(isSelected ? "var(--accent-fill-rest)" : "transparent");"
+                                 role="radio"
+                                 aria-checked="@isSelected"
+                                 tabindex="0"
+                                 @onclick="@(() => _selectedAtendenteId = atendente.Id)"
+                                 @onkeydown="@((e) => { if (e.Key == "Enter" || e.Key == " ") _selectedAtendenteId = atendente.Id; })">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.Person)"
+                                            Color="@(isSelected ? Color.Fill : Color.Neutral)" />
+                                <FluentLabel Color="@(isSelected ? Color.Fill : Color.Neutral)">@atendente.Nome</FluentLabel>
+                            </div>
+                        }
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_transferError))
+                    {
+                        <FluentMessageBar Intent="@MessageIntent.Error">@_transferError</FluentMessageBar>
+                    }
+                </FluentStack>
+            </FluentDialogBody>
+            <FluentDialogFooter>
+                <FluentButton Appearance="Appearance.Outline" @onclick="CancelTransfer" Disabled="@_isTransferring">
+                    Cancelar
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Accent"
+                              @onclick="ConfirmTransfer"
+                              Disabled="@(_selectedAtendenteId == null || _isTransferring)">
+                    @if (_isTransferring)
+                    {
+                        <FluentProgressRing Style="width:16px; height:16px;" />
+                        <span style="margin-left:0.5rem;">Transferindo...</span>
+                    }
+                    else
+                    {
+                        <FluentIcon Icon="@(Icons.Regular.Size16.PeopleCommunity)" Slot="start" Color="Color.Fill" />
+                        <span>Transferir</span>
+                    }
+                </FluentButton>
+            </FluentDialogFooter>
+        </FluentDialog>
+
+        <!-- Etiqueta Dialog -->
+        <FluentDialog @ref="_etiquetaDialog" Modal="true" Hidden="@(!_showEtiquetaDialog)" TrapFocus="true"
+                      @ondialogdismiss="CancelEtiquetar"
+                      aria-label="Etiquetar Atendimento">
+            <FluentDialogHeader>
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Tag)" />
+                        <FluentLabel Typo="Typography.Subject">Etiquetar Atendimento</FluentLabel>
+                    </FluentStack>
+                    <div style="margin-left:auto;">
+                        <FluentButton Appearance="Appearance.Stealth" @onclick="CancelEtiquetar" aria-label="Fechar" Title="Fechar">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                        </FluentButton>
+                    </div>
+                </FluentStack>
+            </FluentDialogHeader>
+            <FluentDialogBody>
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                    @if (_etiquetaAtendimento != null)
+                    {
+                        <FluentLabel>
+                            Atendimento <strong>#@_etiquetaAtendimento.Id</strong>
+                            (@(_etiquetaAtendimento.Cliente?.Nome ?? _etiquetaAtendimento.WhatsAppId))
+                        </FluentLabel>
+                    }
+                    <FluentLabel>Selecione a etiqueta:</FluentLabel>
+                    @if (_isLoadingEtiquetas)
+                    {
+                        <FluentProgressRing Style="width: 24px; height: 24px;" />
+                    }
+                    else
+                    {
+                        var etiquetaComboSelecionada = _selectedEtiquetaId.HasValue
+                            ? _etiquetasDisponiveis.FirstOrDefault(e => e.Id == _selectedEtiquetaId)
+                            : null;
+                        <div style="display: flex; align-items: center; gap: 8px; overflow: visible; position: relative; z-index: 30;">
+                            <div style="width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
+                                        background-color: @(etiquetaComboSelecionada != null ? etiquetaComboSelecionada.Cor : "transparent");
+                                        border: 2px solid @(etiquetaComboSelecionada != null ? etiquetaComboSelecionada.Cor : "var(--neutral-stroke-rest)");
+                                        transition: background-color 0.15s, border-color 0.15s;">
+                            </div>
+                            <FluentSelect TOption="string"
+                                          Value="@(_selectedEtiquetaId?.ToString() ?? "")"
+                                          ValueChanged="@OnEtiquetaDialogChanged"
+                                          Style="flex: 1; min-width: 0; position: relative; z-index: 30; overflow: visible;">
+                                <FluentOption TOption="string" Value="">Sem etiqueta</FluentOption>
+                                @foreach (var etiqueta in _etiquetasDisponiveis)
+                                {
+                                    <FluentOption TOption="string" Value="@etiqueta.Id.ToString()">
+                                        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8"
+                                                     VerticalAlignment="VerticalAlignment.Center">
+                                            <div style="width: 12px; height: 12px; border-radius: 50%; background-color: @etiqueta.Cor; flex-shrink: 0;"></div>
+                                            <span>@etiqueta.Nome</span>
+                                        </FluentStack>
+                                    </FluentOption>
+                                }
+                            </FluentSelect>
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_etiquetaError))
+                    {
+                        <FluentMessageBar Intent="@MessageIntent.Error">@_etiquetaError</FluentMessageBar>
+                    }
+                </FluentStack>
+            </FluentDialogBody>
+            <FluentDialogFooter>
+                <FluentButton Appearance="Appearance.Outline" @onclick="CancelEtiquetar" Disabled="@_isEtiquetando">
+                    Cancelar
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Accent"
+                              @onclick="ConfirmEtiquetar"
+                              Disabled="@_isEtiquetando">
+                    @if (_isEtiquetando)
+                    {
+                        <FluentProgressRing Style="width:16px; height:16px;" />
+                        <span style="margin-left:0.5rem;">Salvando...</span>
+                    }
+                    else
+                    {
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Tag)" Slot="start" Color="Color.Fill" />
+                        <span>Aplicar</span>
+                    }
+                </FluentButton>
+            </FluentDialogFooter>
+        </FluentDialog>
+
+        <!-- Bloquear Remetente Dialog -->
+        <BloqueRemetenteDialog Visible="@_showBloqueDialog"
+                              VisibleChanged="@((v) => { _showBloqueDialog = v; StateHasChanged(); })"
+                              Atendimento="@_bloqueAtendimento"
+                              CurrentUserRole="@CurrentUser?.Role"
+                              OnBloquear="@(async (r) => await HandleBloqueRemetente(r))" />
+
+    </div>
+}
+
+@code {
+    private enum MessagesViewMode { List, Board }
+
+    private FluentDialog? _transferDialog;
+    private HubConnection? _hubConnection;
+    private FluentDialog? _etiquetaDialog;
+
+    private int _reativarClienteId;
+    private string _reativarClienteNome = string.Empty;
+    private string _reativarClienteWhatsAppId = string.Empty;
+    private UserInfo? CurrentUser { get; set; }
+    private bool _habilitarBloqueioRemetente = false;  // Flag para permitir bloqueio
+    private MessagesViewMode ViewMode { get; set; } = MessagesViewMode.List;
+
+    // Status visibility filters (checkboxes in header)
+    private bool _filterGrupos = true;
+    private bool _filterPendentes = true;
+    private bool _filterEmAndamento = true;
+    private bool _filterFinalizados = true;
+
+    private List<Atendimento> AtendimentosPendentes { get; set; } = new();
+    private List<Atendimento> AtendimentosPendentesIndividuais { get; set; } = new();
+    private List<Atendimento> AtendimentosPendentesGrupos { get; set; } = new();
+    private List<Atendimento> AtendimentosAtivos { get; set; } = new();
+    private List<Atendimento> AtendimentosFinalizados { get; set; } = new();
+
+    private List<Atendimento> AtendimentosPendentesIndividuaisFiltrados => Filter(AtendimentosPendentesIndividuais);
+    private List<Atendimento> AtendimentosPendentesGruposFiltrados => Filter(AtendimentosPendentesGrupos);
+    private List<Atendimento> AtendimentosAtivosFiltrados => Filter(AtendimentosAtivos);
+    private List<Atendimento> AtendimentosFinalizadosFiltrados => Filter(AtendimentosFinalizados);
+
+    private Atendimento? SelectedAtendimento { get; set; }
+    private string SearchQuery { get; set; } = "";
+    private string ActiveTab { get; set; } = Consts.Tabs.Pending;
+    private bool IsLoadingAtendimentos { get; set; } = true;
+
+    // Transfer state
+    private bool _showTransferDialog;
+    private Atendimento? _transferAtendimento;
+    private List<AtendenteDto> _atendentesDisponiveis = new();
+    private int? _selectedAtendenteId;
+    private bool _isTransferring;
+    private bool _isLoadingAtendentes;
+    private string _transferError = "";
+
+    // Board per-atendente columns (populated for admin/gestor only)
+    private List<AtendenteDto> _boardAtendentes = new();
+
+    // Etiqueta state
+    private bool _showEtiquetaDialog;
+    private Atendimento? _etiquetaAtendimento;
+    private List<EtiquetaDto> _etiquetasDisponiveis = new();
+    private int? _selectedEtiquetaId;
+    private bool _isEtiquetando;
+    private bool _isLoadingEtiquetas;
+    private string _etiquetaError = "";
+
+    // Bloquear remetente state
+    private bool _showBloqueDialog;
+    private Atendimento? _bloqueAtendimento;
+
+    private bool IsAdminOrGestor => CurrentUser?.IsAdministrador == true || CurrentUser?.IsGestor == true;
+    private bool CanAssumirAtendimento => CurrentUser?.IsAtendente == true || CurrentUser?.IsAdministrador == true;
+
+    private List<Atendimento> BoardOrphanAtivos
+    {
+        get
+        {
+            if (!IsAdminOrGestor || _boardAtendentes.Count == 0) return new();
+            var registeredIds = _boardAtendentes.Select(a => a.Id).ToHashSet();
+            return AtendimentosAtivosFiltrados
+                .Where(a => a.AtendenteId == null || !registeredIds.Contains(a.AtendenteId.Value))
+                .ToList();
+        }
+    }
+
+    private string TotalLabel
+    {
+        get
+        {
+            var total = AtendimentosPendentesIndividuais.Count + AtendimentosAtivos.Count;
+            return total == 0 ? "Sem atendimentos ativos" : $"{total} atendimento{(total > 1 ? "s" : "") } em aberto";
+        }
+    }
+
+    private string MobileBackTelefone =>
+        string.IsNullOrWhiteSpace(SelectedAtendimento?.Cliente?.Telefone)
+            ? (SelectedAtendimento?.WhatsAppId.FormatContactId(SelectedAtendimento?.CanalEnum ?? CanalEnum.WhatsApp) ?? "-")
+            : SelectedAtendimento.Cliente.Telefone.FormatTelefone();
+
+    private string MobileBackAtendidoPor =>
+        string.IsNullOrWhiteSpace(SelectedAtendimento?.Atendente?.Nome)
+            ? "Não atribuído"
+            : SelectedAtendimento.Atendente.Nome;
+
+    private List<Atendimento> Filter(List<Atendimento> source)
+    {
+        if (string.IsNullOrWhiteSpace(SearchQuery))
+            return source;
+
+        return source.Where(a =>
+            (a.Cliente?.Nome?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (a.WhatsAppId?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            (a.Atendente?.Nome?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+    }
+
+    private void OnFilterChanged()
+    {
+        // Prevent deselecting all filters — keep at least one active
+        if (!_filterGrupos && !_filterPendentes && !_filterEmAndamento && !_filterFinalizados)
+        {
+            _filterGrupos = true;
+            _filterPendentes = true;
+            _filterEmAndamento = true;
+            _filterFinalizados = true;
+        }
+
+        // If the active list tab was just hidden, switch to the first visible one
+        var activeTabVisible = (ActiveTab == Consts.Tabs.PendingGroups && _filterGrupos) ||
+                               (ActiveTab == Consts.Tabs.Pending && _filterPendentes) ||
+                               (ActiveTab == Consts.Tabs.Active && _filterEmAndamento) ||
+                               (ActiveTab == Consts.Tabs.Finalized && _filterFinalizados);
+
+        if (!activeTabVisible)
+        {
+            if (_filterGrupos) ActiveTab = Consts.Tabs.PendingGroups;
+            else if (_filterPendentes) ActiveTab = Consts.Tabs.Pending;
+            else if (_filterEmAndamento) ActiveTab = Consts.Tabs.Active;
+            else if (_filterFinalizados) ActiveTab = Consts.Tabs.Finalized;
+        }
+
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            CurrentUser = await AuthService.GetUserInfo();
+            if (CurrentUser == null)
+            {
+                Navigation.NavigateTo(Consts.Web.LoginPath);
+                return;
+            }
+
+            SearchQuery = "";
+            await LoadAtendimentos();
+            await LoadHabilitarBloqueioRemetenteConfig();
+            await InitializePharmaHub();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Error initializing messages page [{ex.Message}]");
+            Navigation.NavigateTo(Consts.Web.LoginPath);
+        }
+    }
+
+    private async Task LoadAtendimentos()
+    {
+        await InvokeAsync(() =>
+        {
+            IsLoadingAtendimentos = true;
+            StateHasChanged();
+        });
+
+        try
+        {
+            var pendentesTask = PharmazapApiService.GetAtendimentosAsync(AtendimentoStatusEnum.Pendente.ToString());
+            var ativosTask = PharmazapApiService.GetAtendimentosAsync(AtendimentoStatusEnum.EmAndamento.ToString());
+            var finalizadosTask = PharmazapApiService.GetAtendimentosAsync(AtendimentoStatusEnum.Finalizado.ToString());
+
+            await Task.WhenAll(pendentesTask, ativosTask, finalizadosTask);
+
+            AtendimentosPendentes = pendentesTask.Result;
+            AtualizarPendentesPorOrigem();
+            AtendimentosAtivos = ativosTask.Result;
+            AtendimentosFinalizados = finalizadosTask.Result;
+
+            if (SelectedAtendimento != null)
+            {
+                var selectedId = SelectedAtendimento.Id;
+                SelectedAtendimento = AtendimentosPendentes.FirstOrDefault(a => a.Id == selectedId)
+                    ?? AtendimentosAtivos.FirstOrDefault(a => a.Id == selectedId)
+                    ?? AtendimentosFinalizados.FirstOrDefault(a => a.Id == selectedId);
+            }
+
+            // Load all registered atendentes for the board columns (admin/gestor only)
+            if (IsAdminOrGestor)
+            {
+                try { _boardAtendentes = await PharmazapApiService.GetAtendentesAsync(); }
+                catch (Exception ex) { Logger.LogWarning(ex, "Could not load atendentes for board columns"); }
+            }
+
+            Logger.LogInformation(
+                "Atendimentos loaded — Pendentes: {P}, Ativos: {A}, Finalizados: {F}",
+                AtendimentosPendentes.Count, AtendimentosAtivos.Count, AtendimentosFinalizados.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading atendimentos");
+        }
+        finally
+        {
+            await InvokeAsync(() =>
+            {
+                IsLoadingAtendimentos = false;
+                StateHasChanged();
+            });
+        }
+    }
+
+    private async Task LoadHabilitarBloqueioRemetenteConfig()
+    {
+        _habilitarBloqueioRemetente = await PharmazapApiService.GetHabilitarBloqueioRemetenteAsync();
+    }
+
+    private async Task InitializePharmaHub()
+    {
+        var signalRUrl = Configuration[Consts.SignalRConfig.UrlConfigurationKey]
+            ?? $"https://localhost:5051{Consts.Endpoints.PharmaHub}";
+        var token = CurrentUser?.Token;
+
+        Logger.LogInformation($"Inicializando PharmaHub: {signalRUrl}");
+
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(signalRUrl, options =>
+            {
+                if (!string.IsNullOrEmpty(token))
+                    options.AccessTokenProvider = () => Task.FromResult<string?>(token);
+            })
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<object>(Consts.SignalR.Metodos.NovaMensagemRecebida, async (payload) =>
+        {
+            if (payload is System.Text.Json.JsonElement jsonElement)
+            {
+                if (jsonElement.TryGetProperty("Tipo", out var tipoProp)) 
+                {
+                    var tipo = tipoProp.GetString();
+                    if (tipo == "cliente_inativo")
+                    {
+                        var clienteId = jsonElement.TryGetProperty("ClienteId", out var cid) && cid.TryGetInt32(out var cId) ? cId : 0;
+                        var clienteNome = jsonElement.TryGetProperty("ClienteNome", out var nomeProp) ? nomeProp.GetString() ?? "Desconhecido" : "Desconhecido";
+                        var whatsAppId = jsonElement.TryGetProperty("WhatsAppId", out var waProp) ? waProp.GetString() ?? "" : "";
+
+                        await InvokeAsync(() =>
+                        {
+                            ShowReativarClienteDialog(clienteId, clienteNome, whatsAppId);
+                            StateHasChanged();
+                        });
+                    }
+                    else
+                    {
+                        await LoadAtendimentos();
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+                else
+                {
+                    await LoadAtendimentos();
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            else
+            {
+                await LoadAtendimentos();
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        _hubConnection.On<object>(Consts.SignalR.Metodos.NovoAtendimentoDisponivel, async (_) =>
+        {
+            await LoadAtendimentos();
+            await InvokeAsync(() =>
+            {
+                ActiveTab = Consts.Tabs.Pending;
+                StateHasChanged();
+            });
+        });
+
+        _hubConnection.On<System.Text.Json.JsonElement>(Consts.SignalR.Metodos.AtendimentoTransferido, async (payload) =>
+        {
+            await LoadAtendimentos();
+
+            // Show a targeted toast to the atendente who received the transfer
+            var toAtendenteId = payload.TryGetProperty("ToAtendenteId", out var toProp) && toProp.TryGetInt32(out var toId) ? toId : (int?)null;
+            var atendimentoId = payload.TryGetProperty("AtendimentoId", out var idProp) && idProp.TryGetInt32(out var aid) ? aid : 0;
+
+            if (toAtendenteId.HasValue &&
+                int.TryParse(CurrentUser?.Id, out var currentId) &&
+                toAtendenteId.Value == currentId)
+            {
+                await InvokeAsync(() =>
+                {
+                    ToastService.ShowInfo($"Novo atendimento #{atendimentoId} transferido para você!");
+                    StateHasChanged();
+                });
+            }
+            else
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        _hubConnection.On<System.Text.Json.JsonElement>(Consts.SignalR.Metodos.AtendimentoVoltadoPendente, async (_) =>
+        {
+            await LoadAtendimentos();
+            await InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            await _hubConnection.StartAsync();
+            Logger.LogInformation($"PharmaHub conectado. Estado: {_hubConnection.State}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Erro ao conectar ao PharmaHub em {signalRUrl}");
+        }
+    }
+
+    private void SelectAtendimento(Atendimento atendimento)
+    {
+        if (atendimento == null) return;
+        try
+        {
+            SelectedAtendimento = atendimento;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Erro ao selecionar atendimento {atendimento.Id} [{ex.Message}]");
+            ToastService.ShowError("Não foi possível abrir a conversa. Tente novamente em instantes.");
+        }
+    }
+
+    private void CloseChat()
+    {
+        SelectedAtendimento = null;
+        StateHasChanged();
+    }
+
+    private Task HandleAtendimentoFinalizado(Atendimento atendimento)
+    {
+        // ChatWindow already called FinalizarAtendimentoAsync; here we only update local UI state.
+        atendimento.StatusEnum = AtendimentoStatusEnum.Finalizado;
+        atendimento.DataFim ??= DateTime.UtcNow;
+        AtendimentosAtivos.Remove(atendimento);
+        if (!AtendimentosFinalizados.Any(a => a.Id == atendimento.Id))
+            AtendimentosFinalizados.Insert(0, atendimento);
+        SelectedAtendimento = null;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task AssumirAtendimento(Atendimento atendimento)
+    {
+        try
+        {
+            var atendimentoId = atendimento.Id;
+            var success = await PharmazapApiService.AssumirAtendimentoAsync(atendimentoId);
+            if (success)
+            {
+                await LoadAtendimentos();
+                SelectedAtendimento = AtendimentosAtivos.FirstOrDefault(a => a.Id == atendimentoId);
+                ActiveTab = Consts.Tabs.Active;
+                ToastService.ShowSuccess($"Atendimento {atendimentoId} assumido com sucesso!");
+                StateHasChanged();
+            }
+            else
+            {
+                Logger.LogWarning("Failed to assume atendimento {Id}", atendimentoId);
+                ToastService.ShowError("Não foi possível assumir o atendimento. Tente novamente.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected error assuming atendimento {Id}", atendimento?.Id);
+            ToastService.ShowError("Erro ao assumir atendimento. Tente novamente.");
+        }
+    }
+
+    private async Task VoltarAtendimentoPendente(Atendimento atendimento)
+    {
+        try
+        {
+            var atendimentoId = atendimento.Id;
+            var success = await PharmazapApiService.VoltarPendenteAsync(atendimentoId);
+            if (success)
+            {
+                atendimento.StatusEnum = AtendimentoStatusEnum.Pendente;
+                atendimento.AtendenteId = null;
+                AtendimentosAtivos.Remove(atendimento);
+                AtendimentosPendentes.RemoveAll(a => a.Id == atendimentoId);
+                AtendimentosPendentes.Insert(0, atendimento);
+                AtualizarPendentesPorOrigem();
+                SelectedAtendimento = null;
+                ToastService.ShowSuccess($"Atendimento #{atendimentoId} voltou para pendente.");
+                StateHasChanged();
+            }
+            else
+            {
+                Logger.LogWarning("Failed to return atendimento {Id} to pending", atendimentoId);
+                ToastService.ShowError("Não foi possível voltar o atendimento para pendente. Tente novamente.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected error returning atendimento {Id} to pending", atendimento?.Id);
+            ToastService.ShowError("Erro ao voltar atendimento para pendente. Tente novamente.");
+        }
+    }
+
+    private async Task InitiateTransfer(Atendimento atendimento)
+    {
+        _transferAtendimento = atendimento;
+        _selectedAtendenteId = null;
+        _transferError = "";
+        _isLoadingAtendentes = true;
+        _showTransferDialog = true;
+        StateHasChanged();
+
+        try
+        {
+            _atendentesDisponiveis = await PharmazapApiService.GetAtendentesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading atendentes for transfer");
+            _atendentesDisponiveis = new List<AtendenteDto>();
+        }
+        finally
+        {
+            _isLoadingAtendentes = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConfirmTransfer()
+    {
+        if (_transferAtendimento == null || _selectedAtendenteId == null) return;
+
+        _isTransferring = true;
+        _transferError = "";
+        StateHasChanged();
+
+        try
+        {
+            var (success, message) = await PharmazapApiService.TransferirAtendimentoAsync(
+                _transferAtendimento.Id, _selectedAtendenteId.Value);
+
+            if (success)
+            {
+                _showTransferDialog = false;
+                var atendimentoId = _transferAtendimento.Id;
+                await LoadAtendimentos();
+                ToastService.ShowSuccess($"Atendimento {atendimentoId} transferido com sucesso!");
+                if (SelectedAtendimento?.Id == atendimentoId)
+                {
+                    SelectedAtendimento = AtendimentosAtivos.FirstOrDefault(a => a.Id == atendimentoId);
+                }
+            }
+            else
+            {
+                _transferError = message;
+                ToastService.ShowError($"Não foi possível transferir o atendimento. {message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error transferring atendimento {Id}", _transferAtendimento?.Id);
+            _transferError = "Erro ao transferir atendimento. Tente novamente.";
+            ToastService.ShowError("Erro ao transferir atendimento. Tente novamente.");
+        }
+        finally
+        {
+            _isTransferring = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelTransfer()
+    {
+        _showTransferDialog = false;
+        _transferAtendimento = null;
+        _selectedAtendenteId = null;
+        _transferError = "";
+        StateHasChanged();
+    }
+
+    private async Task RefreshAtendimentos()
+    {
+        await LoadAtendimentos();
+        ToastService.ShowSuccess("Dados atualizados com sucesso");
+    }
+
+    private async Task HandleClienteUpdated()
+    {
+        var selectedId = SelectedAtendimento?.Id;
+        await LoadAtendimentos();
+        if (selectedId.HasValue)
+        {
+            var atendimentoId = selectedId.Value;
+            SelectedAtendimento = new[] { AtendimentosPendentes, AtendimentosAtivos, AtendimentosFinalizados }
+                .SelectMany(list => list)
+                .FirstOrDefault(a => a.Id == atendimentoId);
+        }
+        StateHasChanged();
+    }
+
+    private void AtualizarPendentesPorOrigem()
+    {
+        AtendimentosPendentesIndividuais = AtendimentosPendentes.Where(a => !a.IsGrupo).ToList();
+        AtendimentosPendentesGrupos = AtendimentosPendentes.Where(a => a.IsGrupo).ToList();
+    }
+
+    private async Task InitiateEtiquetar(Atendimento atendimento)
+    {
+        _etiquetaAtendimento = atendimento;
+        _selectedEtiquetaId = atendimento.EtiquetaId;
+        _etiquetaError = "";
+        _isLoadingEtiquetas = true;
+        _showEtiquetaDialog = true;
+        StateHasChanged();
+
+        try
+        {
+            _etiquetasDisponiveis = await PharmazapApiService.GetEtiquetasAsync(ativo: true);
+            if (!_etiquetasDisponiveis.Any())
+            {
+                Logger.LogWarning("No active etiquetas found, falling back to all etiquetas");
+                _etiquetasDisponiveis = await PharmazapApiService.GetEtiquetasAsync(ativo: null);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading etiquetas");
+            _etiquetaError = "Erro ao carregar etiquetas.";
+            ToastService.ShowError($"Erro ao carregar etiquetas: {ex.Message}");
+        }
+        finally
+        {
+            _isLoadingEtiquetas = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnEtiquetaDialogChanged(string value)
+    {
+        _selectedEtiquetaId = string.IsNullOrEmpty(value) ? null : int.TryParse(value, out var id) ? id : null;
+    }
+
+    private async Task ConfirmEtiquetar()
+    {
+        if (_etiquetaAtendimento == null) return;
+
+        _isEtiquetando = true;
+        _etiquetaError = "";
+        StateHasChanged();
+
+        try
+        {
+            var (success, message) = await PharmazapApiService.AtualizarEtiquetaAtendimentoAsync(
+                _etiquetaAtendimento.Id, _selectedEtiquetaId);
+
+            if (success)
+            {
+                _showEtiquetaDialog = false;
+                _etiquetaAtendimento.EtiquetaId = _selectedEtiquetaId;
+                await LoadAtendimentos();
+                ToastService.ShowSuccess("Atendimento etiquetado com sucesso.");
+            }
+            else
+            {
+                _etiquetaError = message;
+                ToastService.ShowError($"Não foi possível aplicar a etiqueta. {message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating etiqueta for atendimento {Id}", _etiquetaAtendimento?.Id);
+            _etiquetaError = "Erro ao aplicar etiqueta. Tente novamente.";
+            ToastService.ShowError("Erro ao aplicar etiqueta. Tente novamente.");
+        }
+        finally
+        {
+            _isEtiquetando = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelEtiquetar()
+    {
+        _showEtiquetaDialog = false;
+        _etiquetaAtendimento = null;
+        _selectedEtiquetaId = null;
+        _etiquetaError = "";
+        StateHasChanged();
+    }
+
+    private void ShowNewAtendimento()
+    {
+        ToastService.ShowWarning("Operação não implementada.");
+        Logger.LogInformation("Show new atendimento dialog");
+    }
+
+    private void ShowReativarClienteDialog(int clienteId, string clienteNome, string whatsAppId)
+    {
+        _reativarClienteId = clienteId;
+        _reativarClienteNome = clienteNome;
+        _reativarClienteWhatsAppId = whatsAppId;
+        ToastService.ShowInfo($"Cliente inativo {clienteNome} solicitou atendimento!");
+        StateHasChanged();
+    }
+
+    private async Task ReativarClienteECriarAtendimento()
+    {
+        if (_reativarClienteId <= 0) return;
+
+        var result = await PharmazapApiService.ReativarClienteAsync(_reativarClienteId);
+        if (result.Success)
+        {
+            ToastService.ShowSuccess("Cliente reativado com sucesso!");
+            await LoadAtendimentos();
+        }
+        else
+        {
+            ToastService.ShowError($"Erro ao reativar cliente: {result.Message}");
+        }
+        StateHasChanged();
+    }
+
+    private void CancelReativar()
+    {
+        _reativarClienteId = 0;
+        _reativarClienteNome = string.Empty;
+        _reativarClienteWhatsAppId = string.Empty;
+        StateHasChanged();
+    }
+
+    private void SetActiveTab(string tabId)
+    {
+        ActiveTab = tabId;
+    }
+
+    private void HandleSearch() => StateHasChanged();
+
+    private void ClearSearch()
+    {
+        SearchQuery = "";
+        StateHasChanged();
+    }
+
+    private void SetViewMode(MessagesViewMode mode)
+    {
+        ViewMode = mode;
+        ClearSearch();
+    }
+
+    private void ShowBloqueDialog(Atendimento atendimento)
+    {
+        _bloqueAtendimento = atendimento;
+        _showBloqueDialog = true;
+        StateHasChanged();
+    }
+
+    private async Task HandleBloqueRemetente(BloqueRemetenteDialog.BloqueRemetenteRequest request)
+    {
+        if (_bloqueAtendimento == null) return;
+
+        try
+        {
+            // Chama o endpoint da API para bloquear
+            var (success, message) = await PharmazapApiService.BloqueRemetenteAsync(
+                _bloqueAtendimento.Id,
+                request.Escopo,
+                request.Motivo);
+
+            if (success)
+            {
+                ToastService.ShowSuccess("Remetente bloqueado com sucesso");
+                _showBloqueDialog = false;
+                _bloqueAtendimento = null;
+                await LoadAtendimentos();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao bloquear: {message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error blocking sender {AtendimentoId}", _bloqueAtendimento?.Id);
+            ToastService.ShowError($"Erro ao bloquear remetente: {ex.Message}");
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection is not null)
+            await _hubConnection.DisposeAsync();
+    }
+}

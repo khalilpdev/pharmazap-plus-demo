@@ -1,0 +1,113 @@
+@page "/ajuda"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize]
+
+@using Markdig
+@using Markdig.Extensions.AutoIdentifiers
+
+@inject IAuthService AuthService
+@inject IWebHostEnvironment Env
+@inject ILogger<Ajuda> Logger
+@inject IJSRuntime JS
+
+<PageTitle>Ajuda - Pharmazap Plus</PageTitle>
+
+<div class="ajuda-container">
+    @if (_isLoading)
+    {
+        <div class="ajuda-loading">
+            <FluentProgressRing />
+            <FluentLabel>Carregando guia...</FluentLabel>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="ajuda-error">
+            <FluentIcon Icon="@(Icons.Regular.Size48.ErrorCircle)" Color="Color.Error" />
+            <FluentLabel Typo="Typography.Subject">Não foi possível carregar o guia.</FluentLabel>
+            <FluentLabel Style="color: var(--neutral-foreground-hint);">@_error</FluentLabel>
+        </div>
+    }
+    else
+    {
+        <div class="ajuda-header">
+            <FluentIcon Icon="@(Icons.Regular.Size32.QuestionCircle)" Color="Color.Accent" />
+            <div>
+                <FluentLabel Typo="Typography.PageTitle">Ajuda — @_roleTitle</FluentLabel>
+                <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.85rem;">
+                    Guia de uso do PharmazapPlus para o seu perfil
+                </FluentLabel>
+            </div>
+        </div>
+
+        <div class="ajuda-content markdown-body">
+            @((MarkupString)_htmlContent)
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isLoading = true;
+    private string _htmlContent = string.Empty;
+    private string _error = string.Empty;
+    private string _roleTitle = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            var user = AuthService.CurrentUser ?? await AuthService.GetUserInfo();
+
+            if (user == null)
+            {
+                _error = "Usuário não autenticado.";
+                return;
+            }
+
+            _roleTitle = UserRoles.GetRoleDisplayName(user.Role ?? string.Empty);
+
+            var fileName = (user.Role ?? string.Empty) switch
+            {
+                UserRoles.Desenvolvedor => "desenvolvedor.md",
+                UserRoles.Gestor => "gestor.md",
+                UserRoles.Administrador => "administrador.md",
+                UserRoles.Atendente => "atendente.md",
+                _ => "atendente.md"
+            };
+
+            var filePath = Path.Combine(Env.WebRootPath, "docs", fileName);
+
+            if (!File.Exists(filePath))
+            {
+                _error = $"Arquivo de ajuda não encontrado: {fileName}";
+                return;
+            }
+
+            var markdown = await File.ReadAllTextAsync(filePath);
+            _htmlContent = Markdig.Markdown.ToHtml(markdown, BuildPipeline());
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao carregar página de ajuda");
+            _error = "Ocorreu um erro inesperado ao carregar o conteúdo de ajuda.";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+            if (string.IsNullOrEmpty(_error))
+            {
+                try { await JS.InvokeVoidAsync("ajudaInterop.initAnchorLinks"); }
+                catch (Exception ex) { Logger.LogWarning(ex, "Erro ao inicializar navegação de âncoras na página de ajuda."); }
+            }
+        }
+    }
+
+    private static Markdig.MarkdownPipeline BuildPipeline() =>
+        new Markdig.MarkdownPipelineBuilder()
+            .UseAutoIdentifiers(AutoIdentifierOptions.GitHub)
+            .UseAdvancedExtensions()
+            .Build();
+}

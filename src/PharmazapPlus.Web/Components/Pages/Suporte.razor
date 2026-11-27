@@ -1,0 +1,30 @@
+@page "/suporte"
+@layout MainLayout
+
+<PageTitle>Suporte - Pharmazap Plus</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalAlignment="VerticalAlignment.Center" Style="min-height: 80vh; padding: 1.5rem; gap: 2rem;">
+    <!-- Construction Icon -->
+    <FluentIcon Icon="@(Icons.Regular.Size48.Info)" Color="Color.Accent" />
+    
+    <!-- Main Heading -->
+    <FluentLabel Typo="Typography.PageTitle" Weight="FontWeight.Bold" Style="color: var(--accent-foreground-rest); text-align: center;">
+        Página em Construção
+    </FluentLabel>
+    
+    <!-- Description -->
+    <FluentLabel Typo="Typography.Subject" Style="color: var(--neutral-foreground-rest); text-align: center; max-width: 600px;">
+        Estamos trabalhando para trazer uma experiência melhor de suporte para você.
+    </FluentLabel>
+    
+    <!-- Secondary Message -->
+    <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); text-align: center; max-width: 600px;">
+        Em breve, você poderá contar com suporte técnico e documentação completa através desta página.
+    </FluentLabel>
+    
+    <!-- Return Button -->
+    <FluentButton Appearance="Appearance.Accent" href="/dashboard" Style="margin-top: 1rem;">
+        <FluentIcon Icon="@(Icons.Regular.Size16.Home)" Slot="start" />
+        Voltar ao Dashboard
+    </FluentButton>
+</FluentStack>

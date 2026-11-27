@@ -1,0 +1,336 @@
+@page "/relatorios"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize]
+@implements IDisposable
+
+@inject IAuthService AuthService
+@inject IPharmazapApiService ApiService
+@inject IJSRuntime JSRuntime
+@inject ILogger<Relatorios> Logger
+@inject IToastService ToastService
+
+<PageTitle>Relatórios - Pharmazap Plus</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" Style="height: 100%; overflow: hidden;">
+
+    <!-- Page Header -->
+    <div style="flex-shrink: 0; width: 100%;">
+        <FluentCard Style="padding: 1.5rem; border-radius: 0; width: 100%;">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="12" Style="flex: 1; min-width: 0;">
+                    <FluentIcon Icon="@(Icons.Regular.Size32.ChartMultiple)" Color="Color.Accent" />
+                    <FluentLabel Typo="Typography.PageTitle">Relatórios</FluentLabel>
+                </FluentStack>
+                @if (_currentUser != null)
+                {
+                    <FluentBadge Appearance="Appearance.Accent">@(_currentUser.RoleDisplayName)</FluentBadge>
+                }
+            </FluentStack>
+        </FluentCard>
+    </div>
+
+    <!-- Scrollable content -->
+    <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+
+        <!-- Filters Card -->
+        <FluentCard Class="filters-card" Style="padding: 1.25rem; width: 100%;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Filtros</FluentLabel>
+
+                <!-- Date pickers row — use native divs to prevent FluentLabel block-element expansion -->
+                <div class="date-picker-row">
+                    <div class="date-picker-column">
+                        <FluentLabel>Data Início</FluentLabel>
+                        <FluentDatePicker @bind-Value="_dataInicio" Style="width: 180px;" />
+                    </div>
+                    <div class="date-picker-column">
+                        <FluentLabel>Data Fim</FluentLabel>
+                        <FluentDatePicker @bind-Value="_dataFim" Style="width: 180px;" />
+                    </div>
+                    @if (_currentUser?.Role is UserRoles.Gestor or UserRoles.Administrador && _atendentes.Count > 0)
+                    {
+                        <div class="date-picker-column" style="position: relative; z-index: 10;">
+                            <FluentLabel>Atendente</FluentLabel>
+                            <FluentSelect TOption="string"
+                                          Value="@(_atendenteIdFiltro?.ToString() ?? "")"
+                                          ValueChanged="@(v => _atendenteIdFiltro = string.IsNullOrEmpty(v) ? null : int.TryParse(v, out var aid) ? aid : (int?)null)"
+                                          Style="width: 200px; position: relative; z-index: 10; overflow: visible;">
+                                <FluentOption TOption="string" Value="">Todos</FluentOption>
+                                @foreach (var a in _atendentes)
+                                {
+                                    <FluentOption TOption="string" Value="@a.Id.ToString()">@a.Nome</FluentOption>
+                                }
+                            </FluentSelect>
+                        </div>
+                    }
+                </div>
+
+                <!-- Action buttons row -->
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+                    <FluentButton Appearance="Appearance.Accent" @onclick="AplicarFiltros" Disabled="@_isLoading">
+                        Aplicar
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Lightweight" @onclick="ResetarFiltros" Disabled="@_isLoading">
+                        Limpar
+                    </FluentButton>
+                    <FluentSpacer />
+                    <FluentButton Appearance="Appearance.Outline" @onclick="ExportarExcelFaturamento"
+                                  Disabled="@(_isLoading || _isExporting || _faturamentoData == null)"
+                                  Title="Exportar relatório de faturamento">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.ArrowDownload)" Slot="start" />
+                        @(_isExporting ? "Exportando..." : "Exportar Faturamento")
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Outline" @onclick="ExportarExcel" Disabled="@(_isLoading || _isExporting)">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.ArrowDownload)" Slot="start" />
+                        @(_isExporting ? "Exportando..." : "Exportar Excel")
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Outline" @onclick="ImprimirRelatorio">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Print)" Slot="start" />
+                        Imprimir
+                    </FluentButton>
+                </FluentStack>
+            </FluentStack>
+        </FluentCard>
+
+        <div style="position: relative; z-index: 1; display: flex; flex-direction: column; gap: 1rem;">
+        @if (_isLoading)
+        {
+            <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                         VerticalAlignment="VerticalAlignment.Center" VerticalGap="12" Style="padding: 3rem;">
+                <FluentProgressRing />
+                <FluentLabel>Carregando relatório...</FluentLabel>
+            </FluentStack>
+        }
+        else
+        {
+            <!-- Faturamento View (Gestor e Administrador apenas) -->
+            @if (_currentUser?.Role is UserRoles.Gestor or UserRoles.Administrador && _faturamentoData != null)
+            {
+                <RelatorioFaturamentoView Data="@_faturamentoData" />
+            }
+
+            <!-- Gestor View -->
+            @if (_currentUser?.Role == UserRoles.Gestor && _gestorData != null)
+            {
+                <RelatorioGestorView Data="@_gestorData" />
+            }
+
+            <!-- Administrador View -->
+            @if (_currentUser?.Role is UserRoles.Administrador or UserRoles.Gestor && _adminData != null)
+            {
+                <RelatorioAdministradorView Data="@_adminData" />
+            }
+
+            <!-- Atendente View (all roles see their own stats) -->
+            @if (_atendenteData != null)
+            {
+                <RelatorioAtendenteView Data="@_atendenteData" />
+            }
+
+            @if (_gestorData == null && _adminData == null && _atendenteData == null && _faturamentoData == null)
+            {
+                <FluentCard Style="padding: 2rem; text-align: center; width: 100%;">
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" HorizontalAlignment="HorizontalAlignment.Center">
+                        <FluentIcon Icon="@(Icons.Regular.Size48.DocumentText)" Style="color: var(--neutral-foreground-hint);" />
+                        <FluentLabel Typo="Typography.Subject">Nenhum dado encontrado para o período selecionado.</FluentLabel>
+                    </FluentStack>
+                </FluentCard>
+            }
+        }
+        </div>
+
+    </div>
+
+</FluentStack>
+
+@code {
+    private UserInfo? _currentUser;
+    private bool _isLoading = true;
+    private bool _isExporting;
+    private bool _disposed;
+
+    private DateTime? _dataInicio = DateTime.Today.AddDays(-30);
+    private DateTime? _dataFim = DateTime.Today;
+    private int? _atendenteIdFiltro;
+
+    private RelatorioGestorData? _gestorData;
+    private RelatorioAdministradorData? _adminData;
+    private RelatorioAtendenteData? _atendenteData;
+    private RelatorioFaturamentoData? _faturamentoData;
+
+    private List<AtendenteDto> _atendentes = new();
+
+    public void Dispose() => _disposed = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            _currentUser = AuthService.CurrentUser ?? await AuthService.GetUserInfo();
+
+            if (_currentUser?.Role is UserRoles.Gestor or UserRoles.Administrador)
+                _atendentes = await ApiService.GetAtendentesAsync();
+
+            await CarregarRelatorio();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unhandled error during report page initialization");
+            ToastService.ShowError($"Erro ao inicializar a página de relatórios: {ex.Message}");
+            _isLoading = false;
+            if (!_disposed) StateHasChanged();
+        }
+    }
+
+    private async Task AplicarFiltros() => await CarregarRelatorio();
+
+    private async Task ResetarFiltros()
+    {
+        _dataInicio = DateTime.Today.AddDays(-30);
+        _dataFim = DateTime.Today;
+        _atendenteIdFiltro = null;
+        await CarregarRelatorio();
+    }
+
+    private async Task CarregarRelatorio()
+    {
+        _isLoading = true;
+        _gestorData = null;
+        _adminData = null;
+        _atendenteData = null;
+        _faturamentoData = null;
+        StateHasChanged();
+
+        try
+        {
+            var role = _currentUser?.Role;
+
+            if (role == UserRoles.Gestor)
+            {
+                var gestorTask = ApiService.GetRelatorioGestorAsync(_dataInicio, _dataFim);
+                var adminTask = ApiService.GetRelatorioAdministradorAsync(_dataInicio, _dataFim);
+                var atendenteTask = ApiService.GetRelatorioAtendenteAsync(_dataInicio, _dataFim);
+                var faturamentoTask = ApiService.GetRelatorioFaturamentoAsync(_dataInicio, _dataFim, _atendenteIdFiltro);
+                await Task.WhenAll(gestorTask, adminTask, atendenteTask, faturamentoTask);
+                _gestorData = gestorTask.Result;
+                _adminData = adminTask.Result;
+                _atendenteData = atendenteTask.Result;
+                _faturamentoData = faturamentoTask.Result;
+            }
+            else if (role == UserRoles.Administrador)
+            {
+                var adminTask = ApiService.GetRelatorioAdministradorAsync(_dataInicio, _dataFim);
+                var atendenteTask = ApiService.GetRelatorioAtendenteAsync(_dataInicio, _dataFim);
+                var faturamentoTask = ApiService.GetRelatorioFaturamentoAsync(_dataInicio, _dataFim, _atendenteIdFiltro);
+                await Task.WhenAll(adminTask, atendenteTask, faturamentoTask);
+                _adminData = adminTask.Result;
+                _atendenteData = atendenteTask.Result;
+                _faturamentoData = faturamentoTask.Result;
+            }
+            else
+            {
+                _atendenteData = await ApiService.GetRelatorioAtendenteAsync(_dataInicio, _dataFim);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading reports");
+            ToastService.ShowError($"Erro ao carregar relatórios: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            if (!_disposed) StateHasChanged();
+        }
+    }
+
+    private async Task ExportarExcelFaturamento()
+    {
+        _isExporting = true;
+        if (!_disposed) StateHasChanged();
+
+        try
+        {
+            var bytes = await ApiService.ExportarRelatorioAsync("faturamento", _dataInicio, _dataFim);
+            if (bytes != null)
+            {
+                var fileName = $"relatorio_faturamento_{DateTime.Today:yyyyMMdd}.xlsx";
+                await JSRuntime.InvokeVoidAsync(
+                    "relatoriosInterop.downloadFileFromBytes",
+                    fileName,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    bytes);
+            }
+            else
+            {
+                ToastService.ShowWarning("Não foi possível gerar o arquivo de exportação de faturamento.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error exporting faturamento report");
+            ToastService.ShowError($"Erro ao exportar relatório de faturamento: {ex.Message}");
+        }
+        finally
+        {
+            _isExporting = false;
+            if (!_disposed) StateHasChanged();
+        }
+    }
+
+    private async Task ExportarExcel()
+    {
+        _isExporting = true;
+        StateHasChanged();
+
+        try
+        {
+            var tipo = (_currentUser?.Role switch
+            {
+                UserRoles.Gestor => RelatorioTipoEnum.Gestor,
+                UserRoles.Administrador => RelatorioTipoEnum.Administrador,
+                _ => RelatorioTipoEnum.Atendente
+            }).ToApiString();
+
+            var bytes = await ApiService.ExportarRelatorioAsync(tipo, _dataInicio, _dataFim);
+            if (bytes != null)
+            {
+                var fileName = $"relatorio_{tipo}_{DateTime.Today:yyyyMMdd}.xlsx";
+                await JSRuntime.InvokeVoidAsync(
+                    "relatoriosInterop.downloadFileFromBytes",
+                    fileName,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    bytes);
+            }
+            else
+            {
+                ToastService.ShowWarning("Não foi possível gerar o arquivo de exportação.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error exporting report");
+            ToastService.ShowError($"Erro ao exportar relatório: {ex.Message}");
+        }
+        finally
+        {
+            _isExporting = false;
+            if (!_disposed) StateHasChanged();
+        }
+    }
+
+    private async Task ImprimirRelatorio()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("relatoriosInterop.printPage");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error printing report");
+            ToastService.ShowError($"Erro ao imprimir o relatório: {ex.Message}");
+        }
+    }
+}

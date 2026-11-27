@@ -1,0 +1,277 @@
+﻿@page "/login"
+@rendermode InteractiveServer
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<Login> Logger
+@inject IToastService ToastService
+
+<div class="login-container">
+    <FluentCard Width="420px" Class="login-card" Elevation="4">
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 1rem;">
+                <FluentIcon Icon="@(Icons.Regular.Size24.Pill)" />
+                <h2 style="margin: 0; color: var(--accent-foreground-rest);">Pharmazap Plus</h2>
+            </div>
+            <p style="color: var(--neutral-foreground-hint); margin: 0;">Plataforma de Atendimento para Farmacias</p>
+        </div>
+
+        <FluentTextField @bind-Value="@Email"
+                         Placeholder="seu@email.com"
+                         Required="true"
+                         Type="InputType.Email"
+                         Style="width: 100%;">
+            <FluentLabel>Email</FluentLabel>
+        </FluentTextField>
+
+        <div class="password-field-wrapper" style="margin-top: 1rem;">
+            <FluentTextField @bind-Value="@Password"
+                             Placeholder="********"
+                             Required="true"
+                             TextFieldType="@(ShowPassword ? TextFieldType.Text : TextFieldType.Password)"
+                             Style="width: 100%;">
+                <FluentLabel>Senha</FluentLabel>
+            </FluentTextField>
+            <button type="button"
+                    class="password-toggle-button"
+                    aria-label="@(ShowPassword ? "Ocultar senha" : "Mostrar senha")"
+                    title="@(ShowPassword ? "Ocultar senha" : "Mostrar senha")"
+                    @onclick="TogglePasswordVisibility">
+                @if (ShowPassword)
+                {
+                    <FluentIcon Icon="@(Icons.Regular.Size20.Eye)" />
+                }
+                else
+                {
+                    <FluentIcon Icon="@(Icons.Regular.Size20.EyeOff)" />
+                }
+            </button>
+        </div>
+
+        <FluentButton Appearance="Appearance.Accent"
+                      Style="width: 100%; margin-top: 2rem; height: 45px;"
+                      @onclick="HandleLogin"
+                      Disabled="@IsLoading">
+            @if (IsLoading)
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Send)" Slot="start" />
+                <span style="margin-left: 0.5rem;">Entrando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.CheckmarkCircle)" Slot="start" />
+                <span>Entrar na Plataforma</span>
+            }
+        </FluentButton>
+
+        <div style="margin-top: 0.75rem; text-align: center;">
+            <FluentButton Appearance="Appearance.Stealth"
+                          Style="font-size: 0.875rem;"
+                          @onclick="ShowEsqueciSenha">
+                Esqueci minha senha
+            </FluentButton>
+        </div>
+
+        <div style="margin-top: 2rem; text-align: center;">
+            <p style="font-size: 0.9rem; color: var(--neutral-foreground-hint); margin: 0;">
+                Versão 1.0.0
+            </p>
+            <p style="font-size: 0.9rem; color: var(--neutral-foreground-hint); margin: 0.25rem 0 0 0;">
+                <FluentAnchor Href="/sobre" Appearance="Appearance.Stealth">Sobre</FluentAnchor> -
+                <FluentAnchor Href="/suporte" Appearance="Appearance.Stealth">Suporte</FluentAnchor>
+            </p>
+        </div>
+    </FluentCard>
+</div>
+
+<!-- Esqueci Senha Dialog -->
+<FluentDialog Modal="true" Hidden="@(!_showEsqueciSenha)" TrapFocus="true"
+              @ondialogdismiss="CloseEsqueciSenha">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Password)" />
+                <FluentLabel Typo="Typography.Subject">Recuperar Acesso</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseEsqueciSenha" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="padding: 0.5rem 0;">
+            <FluentIcon Icon="@(Icons.Regular.Size48.PersonPasskey)" Color="Color.Accent" Style="align-self: center;" />
+            <FluentLabel Typo="Typography.Subject" Style="text-align: center;">Precisa redefinir sua senha?</FluentLabel>
+            <FluentLabel Typo="Typography.Body" Style="text-align: center; color: var(--neutral-foreground-rest);">
+                Entre em contato com o <strong>administrador da sua farmácia</strong> e solicite a redefinição de senha.
+                O administrador pode redefinir sua senha diretamente pela página de gerenciamento de atendentes.
+            </FluentLabel>
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Accent" @onclick="CloseEsqueciSenha" Style="width: 100%;">
+            Entendido
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthenticationState { get; set; }
+
+    private string Email { get; set; } = "";
+    private string Password { get; set; } = "";
+    private bool ShowPassword { get; set; } = false;
+    private bool IsLoading { get; set; } = false;
+    private bool _showEsqueciSenha { get; set; } = false;
+
+    private void TogglePasswordVisibility()
+    {
+        ShowPassword = !ShowPassword;
+    }
+
+    private void ShowEsqueciSenha()
+    {
+        _showEsqueciSenha = true;
+    }
+
+    private void CloseEsqueciSenha()
+    {
+        _showEsqueciSenha = false;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            if (AuthenticationState != null)
+            {
+                var authState = await AuthenticationState;
+                if (authState.User.Identity?.IsAuthenticated == true)
+                {
+                    Navigation.NavigateTo("/dashboard", forceLoad: false);
+                    return;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error checking authentication state on login page");
+        }
+
+    }
+
+
+    private async Task HandleLogin()
+    {
+        if (string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Password))
+        {
+            ToastService.ShowError("Preencha email e senha");
+            return;
+        }
+
+        IsLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            Logger.LogInformation($"Login attempt for: {Email}");
+
+            var success = await AuthService.Login(Email, Password);
+            if (success)
+            {
+                Logger.LogInformation($"Login successful for: {Email}");
+                ToastService.ShowSuccess($"Bem-vindo! Login realizado com sucesso.");
+
+                // LGPD: Administrador needs to accept terms on first login
+                if (AuthService.CurrentUser?.TermoAceiteRequired == true)
+                {
+                    Navigation.NavigateTo("/aceitar-termos", forceLoad: false);
+                }
+                else
+                {
+                    Navigation.NavigateTo("/dashboard", forceLoad: false);
+                }
+            }
+            else
+            {
+                ToastService.ShowError("Falha no login. Verifique suas credenciais.");
+                Logger.LogWarning("Login failed for: {Email}", Email);
+            }
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            // Erro de autenticação com mensagem específica da API
+            ToastService.ShowError(ex.Message);
+            Logger.LogWarning("Login failed for {Email}: {ErrorMessage}", Email, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            ToastService.ShowError("Erro inesperado ao fazer login. Tente novamente.");
+            Logger.LogError(ex, "Login error for: {Email}. [{Message}]", Email, ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
+    }
+}
+
+<style>
+    .login-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+        padding: 1rem;
+    }
+
+    .login-card {
+        padding: 2.5rem;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+    }
+
+    .password-field-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .password-field-wrapper ::deep input {
+        padding-right: 3rem;
+    }
+
+    .password-toggle-button {
+        position: absolute;
+        right: 0.75rem;
+        top: calc(50% + 0.75rem);
+        transform: translateY(-50%);
+        border: none;
+        background: transparent;
+        color: var(--neutral-foreground-rest);
+        cursor: pointer;
+        font-size: 1rem;
+        padding: 0.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        z-index: 10;
+    }
+
+    .password-toggle-button:hover {
+        color: var(--neutral-foreground-strong);
+    }
+
+    @@media (max-width: 480px) {
+        .login-card {
+            width: 95% !important;
+            padding: 1.5rem;
+        }
+    }
+</style>

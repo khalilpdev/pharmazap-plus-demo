@@ -1,0 +1,26 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <ResourcePreloader />
+    <link rel="stylesheet" href="@Assets["app.css"]" />
+    <link rel="stylesheet" href="@Assets["PharmazapPlus.Web.styles.css"]" />
+    <ImportMap />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <HeadOutlet @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
+</head>
+
+<body>
+    <Routes @rendermode="@(new InteractiveServerRenderMode(prerender: false))" />
+    <ReconnectModal />
+    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="js/relatorios.js"></script>
+    <script src="js/ajuda.js"></script>
+    <script src="js/layout.js"></script>
+    <script src="js/meta-oauth.js"></script>
+</body>
+
+</html>

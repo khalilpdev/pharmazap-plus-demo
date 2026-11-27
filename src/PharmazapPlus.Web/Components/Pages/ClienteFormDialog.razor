@@ -1,0 +1,430 @@
+@inject ILogger<ClienteFormDialog> Logger
+@inject IPharmazapApiService PharmazapApiService
+@inject IToastService ToastService
+
+<FluentDialog @ref="_dialog" Modal="true" Hidden="@(!Visible)" TrapFocus="true"
+              @ondialogdismiss="HandleCancel"
+              aria-label="@DialogTitle">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.PersonAdd)" />
+                <FluentLabel Typo="Typography.Subject">@DialogTitle</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="HandleCancel" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+
+    <FluentDialogBody Style="overflow: visible;">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0; overflow: visible; position: relative; z-index: 30;">
+
+            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); font-size: 0.8rem;">
+                * Campos obrigatórios: apenas Nome e WhatsApp para novos contatos
+            </FluentLabel>
+
+            @if (Cliente != null && (Cliente.PerfilCompra == ClientePerfilCompraEnum.UsoContinuo || Cliente.Status == ClienteStatus.Ativo))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Warning">
+                    Recomendamos completar o cadastro com nome completo, telefone e CPF para clientes ativos ou de uso contínuo.
+                </FluentMessageBar>
+            }
+
+            <FluentTextField @bind-Value="@_nome"
+                             Label="Nome *"
+                             Placeholder="Nome do cliente"
+                             Style="width: 100%;"
+                             Required="true" />
+
+            <FluentTextField @bind-Value="@_sobrenome"
+                             Label="Sobrenome"
+                             Placeholder="Sobrenome"
+                             Style="width: 100%;" />
+
+            <FluentTextField Value="@_whatsAppId"
+                             ValueChanged="@(v => _whatsAppId = v.MaskWhatsApp())"
+                             Immediate="true"
+                             Label="WhatsApp *"
+                             Placeholder="5511999999999"
+                             Style="width: 100%;"
+                             Required="true"
+                             MaxLength="16" />
+
+            <FluentTextField @bind-Value="@_email"
+                             Label="Email"
+                             Placeholder="email@exemplo.com"
+                             Style="width: 100%;"
+                             Type="InputType.Email" />
+
+            <FluentTextField Value="@_telefone"
+                             ValueChanged="@(v => _telefone = v.MaskTelefoneInput())"
+                             Immediate="true"
+                             Label="Telefone"
+                             Placeholder="(11) 99999-9999"
+                             Style="width: 100%;"
+                             MaxLength="16" />
+
+            <FluentTextField Value="@_cpf"
+                             ValueChanged="@(v => _cpf = v.MaskCpf())"
+                             Immediate="true"
+                             Label="CPF"
+                             Placeholder="000.000.000-00"
+                             Style="width: 100%;"
+                             MaxLength="14" />
+
+            <FluentTextField @bind-Value="@_endereco"
+                             Label="Endereço"
+                             Placeholder="Rua, Avenida..."
+                             Style="width: 100%;" />
+
+            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+                <FluentTextField @bind-Value="@_numero"
+                                 Label="Número"
+                                 Placeholder="123"
+                                 Style="flex: 1;" />
+
+                <FluentTextField @bind-Value="@_complemento"
+                                 Label="Complemento"
+                                 Placeholder="Apto, Sala..."
+                                 Style="flex: 2;" />
+            </FluentStack>
+
+            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="overflow: visible; position: relative; z-index: 30;">
+                <FluentTextField @bind-Value="@_bairro"
+                                 Label="Bairro"
+                                 Placeholder="Bairro"
+                                 Style="flex: 2;" />
+
+                <FluentTextField @bind-Value="@_cidade"
+                                 Label="Cidade"
+                                 Placeholder="Cidade"
+                                 Style="flex: 2;" />
+
+                <FluentSelect TOption="string"
+                              @bind-Value="@_estado"
+                              Label="Estado"
+                              Style="flex: 1; position: relative; z-index: 30; overflow: visible;">
+                    <FluentOption TOption="string" Value="">Selecione</FluentOption>
+                    <FluentOption TOption="string" Value="AC">AC - Acre</FluentOption>
+                    <FluentOption TOption="string" Value="AL">AL - Alagoas</FluentOption>
+                    <FluentOption TOption="string" Value="AP">AP - Amapá</FluentOption>
+                    <FluentOption TOption="string" Value="AM">AM - Amazonas</FluentOption>
+                    <FluentOption TOption="string" Value="BA">BA - Bahia</FluentOption>
+                    <FluentOption TOption="string" Value="CE">CE - Ceará</FluentOption>
+                    <FluentOption TOption="string" Value="DF">DF - Distrito Federal</FluentOption>
+                    <FluentOption TOption="string" Value="ES">ES - Espírito Santo</FluentOption>
+                    <FluentOption TOption="string" Value="GO">GO - Goiás</FluentOption>
+                    <FluentOption TOption="string" Value="MA">MA - Maranhão</FluentOption>
+                    <FluentOption TOption="string" Value="MT">MT - Mato Grosso</FluentOption>
+                    <FluentOption TOption="string" Value="MS">MS - Mato Grosso do Sul</FluentOption>
+                    <FluentOption TOption="string" Value="MG">MG - Minas Gerais</FluentOption>
+                    <FluentOption TOption="string" Value="PA">PA - Pará</FluentOption>
+                    <FluentOption TOption="string" Value="PB">PB - Paraíba</FluentOption>
+                    <FluentOption TOption="string" Value="PR">PR - Paraná</FluentOption>
+                    <FluentOption TOption="string" Value="PE">PE - Pernambuco</FluentOption>
+                    <FluentOption TOption="string" Value="PI">PI - Piauí</FluentOption>
+                    <FluentOption TOption="string" Value="RJ">RJ - Rio de Janeiro</FluentOption>
+                    <FluentOption TOption="string" Value="RN">RN - Rio Grande do Norte</FluentOption>
+                    <FluentOption TOption="string" Value="RS">RS - Rio Grande do Sul</FluentOption>
+                    <FluentOption TOption="string" Value="RO">RO - Rondônia</FluentOption>
+                    <FluentOption TOption="string" Value="RR">RR - Roraima</FluentOption>
+                    <FluentOption TOption="string" Value="SC">SC - Santa Catarina</FluentOption>
+                    <FluentOption TOption="string" Value="SP">SP - São Paulo</FluentOption>
+                    <FluentOption TOption="string" Value="SE">SE - Sergipe</FluentOption>
+                    <FluentOption TOption="string" Value="TO">TO - Tocantins</FluentOption>
+                </FluentSelect>
+            </FluentStack>
+
+            <FluentTextField Value="@_cep"
+                             ValueChanged="@(v => _cep = v.MaskCep())"
+                             Immediate="true"
+                             Label="CEP"
+                             Placeholder="00000-000"
+                             Style="width: 100%;"
+                             MaxLength="9" />
+
+            <FluentSelect TOption="string"
+                          @bind-Value="@_status"
+                          Label="Status"
+                          Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.StatusAtivo">Ativo</FluentOption>
+                <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.StatusInativo">Inativo</FluentOption>
+                <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.StatusBloqueado">Bloqueado</FluentOption>
+                <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.StatusPotencial">Potencial</FluentOption>
+            </FluentSelect>
+
+            <FluentSelect TOption="string"
+                          @bind-Value="@_tipo"
+                          Label="Tipo"
+                          Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.TipoPessoaFisica">Pessoa Física</FluentOption>
+                <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.TipoPessoaJuridica">Pessoa Jurídica</FluentOption>
+                <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.TipoProfissionalSaude">Profissional de Saúde</FluentOption>
+            </FluentSelect>
+
+            <FluentCheckbox @bind-Value="@_usoContinuo">
+                Uso Contínuo
+            </FluentCheckbox>
+
+            @if (Cliente != null)
+            {
+                <div>
+                    <FluentLabel Style="margin-bottom: 0.4rem; display: block;">Perfil de Compra</FluentLabel>
+                    <FluentSelect TOption="string"
+                                  Value="@_perfilCompra"
+                                  ValueChanged="@OnPerfilCompraChanged"
+                                  Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                        <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.PerfilProspecto">🔍 Prospecto — primeiro contato</FluentOption>
+                        <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.PerfilOcasional">🛒 Ocasional — comprou, sem regularidade</FluentOption>
+                        <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.PerfilRecorrente">🔄 Recorrente — compra com frequência</FluentOption>
+                        <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.PerfilUsoContinuo">💊 Uso Contínuo — medicamentos fixos</FluentOption>
+                        <FluentOption TOption="string" Value="@Consts.ClienteFormDialog.PerfilFidelizado">⭐ Fidelizado — cliente estratégico</FluentOption>
+                    </FluentSelect>
+                </div>
+            }
+
+            <FluentTextArea @bind-Value="@_observacoesSaude"
+                            Label="Observações de Saúde"
+                            Placeholder="Alergias, condições médicas, medicamentos..."
+                            Style="width: 100%;"
+                            Rows="3" />
+
+            <div>
+                <FluentLabel Style="margin-bottom: 0.4rem; display: block;">Etiqueta</FluentLabel>
+                <FluentSelect TOption="string"
+                              Value="@(_etiquetaId?.ToString() ?? "")"
+                              ValueChanged="@OnEtiquetaChanged"
+                              Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                    <FluentOption TOption="string" Value="">Sem etiqueta</FluentOption>
+                    @foreach (var etiqueta in _etiquetas)
+                    {
+                        <FluentOption TOption="string" Value="@etiqueta.Id.ToString()">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8"
+                                         VerticalAlignment="VerticalAlignment.Center">
+                                <div style="width: 12px; height: 12px; border-radius: 50%; background-color: @etiqueta.Cor; flex-shrink: 0;"></div>
+                                <span>@etiqueta.Nome</span>
+                            </FluentStack>
+                        </FluentOption>
+                    }
+                </FluentSelect>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_errorMessage</FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="HandleCancel" Disabled="@_isSaving">
+            Cancelar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="HandleSave" Disabled="@_isSaving">
+            @if (_isSaving)
+            {
+                <FluentProgressRing Style="width:16px; height:16px;" />
+                <span style="margin-left:0.5rem;">Salvando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Save)" Slot="start" Color="Color.Fill" />
+                <span>@(Cliente == null ? "Criar" : "Salvar")</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public Cliente? Cliente { get; set; }
+    [Parameter] public EventCallback<(bool IsNew, CreateClienteDto? Create, UpdateClienteDto? Update)> OnSave { get; set; }
+
+    private FluentDialog? _dialog;
+    private string _nome = "";
+    private string _sobrenome = "";
+    private string _whatsAppId = "";
+    private string _email = "";
+    private string _telefone = "";
+    private string _cpf = "";
+    private string _endereco = "";
+    private string _numero = "";
+    private string _complemento = "";
+    private string _bairro = "";
+    private string _cidade = "";
+    private string _estado = "";
+    private string _cep = "";
+    private bool _usoContinuo = false;
+    private string _observacoesSaude = "";
+    private string _status = Consts.ClienteFormDialog.StatusAtivo;
+    private string _tipo = Consts.ClienteFormDialog.TipoPessoaFisica;
+    private string _perfilCompra = Consts.ClienteFormDialog.PerfilProspecto;
+    private int? _etiquetaId = null;
+    private bool _isSaving = false;
+    private string _errorMessage = "";
+    private List<EtiquetaDto> _etiquetas = new();
+
+    private string DialogTitle => Cliente == null ? Consts.ClienteFormDialog.TituloNovo : Consts.ClienteFormDialog.TituloEdicao;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+
+        if (Visible && _etiquetas.Count == 0)
+        {
+            try
+            {
+                _etiquetas = await PharmazapApiService.GetEtiquetasAsync(ativo: true);
+            }
+            catch (Exception ex)
+            {
+                var errorMsg = ($"Não foi possível carregar as etiquetas. Erro: {ex.Message}");
+                ToastService.ShowError(errorMsg);
+                Logger.LogWarning(ex, "{ErrorMessage}", errorMsg);
+            }
+        }
+
+        if (Cliente != null)
+        {
+            _nome = Cliente.Nome ?? "";
+            _sobrenome = Cliente.Sobrenome ?? "";
+            _whatsAppId = Cliente.WhatsAppId.MaskWhatsApp();
+            _email = Cliente.Email ?? "";
+            _telefone = Cliente.Telefone.MaskTelefoneInput();
+            _cpf = Cliente.Cpf.MaskCpf();
+            _endereco = Cliente.Endereco ?? "";
+            _numero = Cliente.Numero ?? "";
+            _complemento = Cliente.Complemento ?? "";
+            _bairro = Cliente.Bairro ?? "";
+            _cidade = Cliente.Cidade ?? "";
+            _estado = Cliente.Estado ?? "";
+            _cep = Cliente.Cep.MaskCep();
+            _usoContinuo = Cliente.UsoContinuo;
+            _observacoesSaude = Cliente.ObservacoesSaude ?? "";
+            _status = Cliente.Status.ToString();
+            _tipo = Cliente.Tipo.ToString();
+            _perfilCompra = Cliente.PerfilCompra.ToString();
+            _etiquetaId = Cliente.EtiquetaId;
+        }
+        else
+        {
+            _nome = "";
+            _sobrenome = "";
+            _whatsAppId = "";
+            _email = "";
+            _telefone = "";
+            _cpf = "";
+            _endereco = "";
+            _numero = "";
+            _complemento = "";
+            _bairro = "";
+            _cidade = "";
+            _estado = "";
+            _cep = "";
+            _usoContinuo = false;
+            _observacoesSaude = "";
+            _status = Consts.ClienteFormDialog.StatusAtivo;
+            _tipo = Consts.ClienteFormDialog.TipoPessoaFisica;
+            _perfilCompra = Consts.ClienteFormDialog.PerfilProspecto;
+            _etiquetaId = null;
+        }
+        _errorMessage = "";
+        _isSaving = false;
+    }
+
+    private void OnEtiquetaChanged(string value)
+    {
+        _etiquetaId = string.IsNullOrEmpty(value) ? null : int.TryParse(value, out var id) ? id : null;
+    }
+
+    private void OnPerfilCompraChanged(string value)
+    {
+        _perfilCompra = value;
+    }
+
+    private async Task HandleSave()
+    {
+        _errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(_nome))
+        {
+            _errorMessage = Consts.ClienteFormDialog.MensagemErroNomeObrigatorio;
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_whatsAppId))
+        {
+            _errorMessage = Consts.ClienteFormDialog.MensagemErroWhatsAppObrigatorio;
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            if (Cliente == null)
+            {
+                var create = new CreateClienteDto
+                {
+                    Nome = _nome.Trim(),
+                    Sobrenome = string.IsNullOrWhiteSpace(_sobrenome) ? null : _sobrenome.Trim(),
+                    WhatsAppId = _whatsAppId.SanitizeDigits(13),
+                    Email = string.IsNullOrWhiteSpace(_email) ? null : _email.Trim(),
+                    Telefone = string.IsNullOrWhiteSpace(_telefone) ? null : _telefone.SanitizeDigits(11),
+                    Cpf = string.IsNullOrWhiteSpace(_cpf) ? null : _cpf.SanitizeDigits(11),
+                    Endereco = string.IsNullOrWhiteSpace(_endereco) ? null : _endereco.Trim(),
+                    Numero = string.IsNullOrWhiteSpace(_numero) ? null : _numero.Trim(),
+                    Complemento = string.IsNullOrWhiteSpace(_complemento) ? null : _complemento.Trim(),
+                    Bairro = string.IsNullOrWhiteSpace(_bairro) ? null : _bairro.Trim(),
+                    Cidade = string.IsNullOrWhiteSpace(_cidade) ? null : _cidade.Trim(),
+                    Estado = string.IsNullOrWhiteSpace(_estado) ? null : _estado.Trim(),
+                    Cep = string.IsNullOrWhiteSpace(_cep) ? null : _cep.SanitizeDigits(8),
+                    UsoContinuo = _usoContinuo,
+                    ObservacoesSaude = string.IsNullOrWhiteSpace(_observacoesSaude) ? null : _observacoesSaude.Trim(),
+                    Status = _status,
+                    Tipo = _tipo
+                };
+                await OnSave.InvokeAsync((true, create, null));
+            }
+            else
+            {
+                var update = new UpdateClienteDto
+                {
+                    Nome = _nome.Trim(),
+                    Sobrenome = string.IsNullOrWhiteSpace(_sobrenome) ? null : _sobrenome.Trim(),
+                    Email = string.IsNullOrWhiteSpace(_email) ? null : _email.Trim(),
+                    Telefone = string.IsNullOrWhiteSpace(_telefone) ? null : _telefone.SanitizeDigits(11),
+                    Cpf = string.IsNullOrWhiteSpace(_cpf) ? null : _cpf.SanitizeDigits(11),
+                    Endereco = string.IsNullOrWhiteSpace(_endereco) ? null : _endereco.Trim(),
+                    Numero = string.IsNullOrWhiteSpace(_numero) ? null : _numero.Trim(),
+                    Complemento = string.IsNullOrWhiteSpace(_complemento) ? null : _complemento.Trim(),
+                    Bairro = string.IsNullOrWhiteSpace(_bairro) ? null : _bairro.Trim(),
+                    Cidade = string.IsNullOrWhiteSpace(_cidade) ? null : _cidade.Trim(),
+                    Estado = string.IsNullOrWhiteSpace(_estado) ? null : _estado.Trim(),
+                    Cep = string.IsNullOrWhiteSpace(_cep) ? null : _cep.SanitizeDigits(8),
+                    UsoContinuo = _usoContinuo,
+                    ObservacoesSaude = string.IsNullOrWhiteSpace(_observacoesSaude) ? null : _observacoesSaude.Trim(),
+                    Status = _status,
+                    Tipo = _tipo,
+                    EtiquetaId = _etiquetaId,
+                    ClearEtiqueta = _etiquetaId == null,
+                    PerfilCompra = Enum.TryParse<ClientePerfilCompraEnum>(_perfilCompra, out var perfil) ? perfil : null
+                };
+                await OnSave.InvokeAsync((false, null, update));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+}

@@ -1,0 +1,543 @@
+@import '_content/Microsoft.FluentUI.AspNetCore.Components/css/reboot.css';
+@import 'tokens.css';
+
+body {
+    --body-font: "Segoe UI Variable", "Segoe UI", sans-serif;
+    font-family: var(--body-font);
+    font-size: var(--type-ramp-base-font-size);
+    line-height: var(--type-ramp-base-line-height);
+    margin: 0;
+}
+
+.navmenu-icon {
+    display: none;
+}
+
+
+.header-actions {
+    margin-left: auto;
+    margin-right: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.font-size-icon {
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.logout-button {
+    width: 100%;
+    justify-content: flex-start;
+    padding-left: 1rem;
+}
+
+#main-menu.collapsed fluent-button.logout-button {
+    justify-content: center;
+    padding-left: 0;
+}
+
+#main-menu.collapsed fluent-button.logout-button .logout-label {
+    display: none;
+}
+
+/* ── User info section (top of sidebar) ── */
+.user-info-section {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+    margin-bottom: 0.25rem;
+}
+
+.user-info-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.user-info-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.user-info-name {
+    font-weight: 600;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-info-role {
+    font-size: 0.8rem;
+    color: var(--neutral-foreground-hint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Collapsed sidebar: hide text, center icon, reduce padding */
+#main-menu.collapsed .user-info-section {
+    padding: 0.4rem 0;
+    display: flex;
+    justify-content: center;
+}
+
+#main-menu.collapsed .user-info-inner {
+    justify-content: center;
+    gap: 0;
+}
+
+#main-menu.collapsed .user-info-text {
+    display: none;
+}
+
+.main {
+    min-height: calc(100dvh - 50px);
+    color: var(--neutral-foreground-rest);
+    align-items: stretch !important;
+}
+
+.body-content {
+    align-self: stretch;
+    height: calc(100dvh - 50px) !important;
+    display: flex;
+}
+
+.content {
+    padding: 0.5rem 1.5rem;
+    align-self: stretch !important;
+    width: 100%;
+}
+
+.manage {
+    width: 100dvw;
+}
+
+.alert {
+    border: 1px dashed var(--accent-fill-rest);
+    padding: 5px;
+    margin: 10px 0;
+}
+
+.alert-danger {
+    border: 1px dashed var(--error);
+}
+
+.alert-success {
+    border: 1px dashed var(--success);
+}
+
+.alert-warning {
+    border: 1px dashed var(--warning);
+}
+
+#blazor-error-ui {
+    background: var(--pz-warning, lightyellow);
+    color: var(--pz-text-primary);
+    bottom: 0;
+    box-shadow: var(--pz-shadow-4);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: var(--pz-z-toast, 1000);
+    margin: 20px 0;
+}
+
+    #blazor-error-ui .dismiss {
+        cursor: pointer;
+        position: absolute;
+        right: 0.75rem;
+        top: 0.5rem;
+    }
+
+.blazor-error-boundary {
+    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=) no-repeat 1rem/1.8rem, var(--pz-error, #C42B1C);
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: var(--colorNeutralForegroundOnBrand, white);
+}
+
+    .blazor-error-boundary::before {
+        content: "An error has occurred. "
+    }
+
+.loading-progress {
+    position: relative;
+    display: block;
+    width: 8rem;
+    height: 8rem;
+    margin: 20vh auto 1rem auto;
+}
+
+    .loading-progress circle {
+        fill: none;
+        stroke: var(--neutral-stroke-rest, #e0e0e0);
+        stroke-width: 0.6rem;
+        transform-origin: 50% 50%;
+        transform: rotate(-90deg);
+    }
+
+        .loading-progress circle:last-child {
+            stroke: var(--pz-accent, #1b6ec2);
+            stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
+            transition: stroke-dasharray 0.05s ease-in-out;
+        }
+
+.loading-progress-text {
+    position: absolute;
+    text-align: center;
+    font-weight: bold;
+    inset: calc(20vh + 3.25rem) 0 auto 0.2rem;
+}
+
+    .loading-progress-text:after {
+        content: var(--blazor-load-percentage-text, "Loading");
+    }
+
+code {
+    color: var(--pz-accent-foreground, var(--accent-foreground-rest));
+}
+
+/* =============================================================
+   Markdown rendered content — shared across Ajuda, TermosDeUso,
+   AceitarTermos and any other page that renders .markdown-body.
+   Uses CSS custom properties so colors adapt to dark/light mode.
+   ============================================================= */
+.markdown-body {
+    background: var(--neutral-layer-card-container);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: var(--control-corner-radius);
+    padding: 2rem 2.5rem;
+    color: var(--neutral-foreground-rest);
+    font-size: 1rem;
+    line-height: 1.7;
+}
+
+.markdown-body h1 {
+    font-size: 1.9rem;
+    font-weight: 700;
+    color: var(--accent-foreground-rest);
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 2px solid var(--accent-fill-rest);
+}
+
+.markdown-body h2 {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--neutral-foreground-rest);
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.markdown-body h3 {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--neutral-foreground-rest);
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--neutral-foreground-rest);
+    margin-top: 1rem;
+    margin-bottom: 0.4rem;
+}
+
+.markdown-body p {
+    margin-bottom: 0.75rem;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+    padding-left: 1.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.markdown-body li {
+    margin-bottom: 0.25rem;
+}
+
+.markdown-body a {
+    color: var(--accent-foreground-rest);
+    text-decoration: none;
+}
+
+.markdown-body a:hover {
+    text-decoration: underline;
+}
+
+.markdown-body code {
+    background: var(--neutral-fill-stealth-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.875em;
+    color: var(--neutral-foreground-rest);
+}
+
+.markdown-body pre {
+    background: var(--neutral-fill-stealth-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: var(--control-corner-radius);
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+}
+
+.markdown-body pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.875rem;
+}
+
+.markdown-body blockquote {
+    border-left: 4px solid var(--accent-fill-rest);
+    margin: 1rem 0;
+    padding: 0.5rem 1rem;
+    background: var(--neutral-fill-stealth-hover);
+    border-radius: 0 var(--control-corner-radius) var(--control-corner-radius) 0;
+    color: var(--neutral-foreground-rest);
+}
+
+.markdown-body blockquote p {
+    margin-bottom: 0;
+}
+
+.markdown-body table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 1rem;
+}
+
+.markdown-body th {
+    background: var(--accent-fill-rest);
+    color: var(--foreground-on-accent-rest);
+    font-weight: 600;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border: 1px solid var(--neutral-stroke-strong-rest);
+}
+
+.markdown-body td {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--neutral-stroke-rest);
+    color: var(--neutral-foreground-rest);
+}
+
+.markdown-body tr:nth-child(even) td {
+    background: var(--neutral-fill-stealth-hover);
+}
+
+.markdown-body hr {
+    border: none;
+    border-top: 1px solid var(--neutral-stroke-divider-rest);
+    margin: 1.5rem 0;
+}
+
+.markdown-body strong {
+    font-weight: 700;
+}
+
+.markdown-body em {
+    font-style: italic;
+}
+
+@media (max-width: 600px) {
+    .header-gutters {
+        margin: 0.5rem 3rem 0.5rem 1.5rem !important;
+    }
+
+    [dir="rtl"] .header-gutters {
+        margin: 0.5rem 1.5rem 0.5rem 3rem !important;
+    }
+
+    .main {
+        flex-direction: column !important;
+        row-gap: 0 !important;
+    }
+
+    nav.sitenav {
+        width: 100%;
+        height: 100%;
+    }
+
+    #main-menu {
+        width: 100% !important;
+    }
+
+        #main-menu > div:first-child:is(.expander) {
+            display: none;
+        }
+
+    .navmenu {
+        width: 100%;
+    }
+
+    #navmenu-toggle {
+        appearance: none;
+    }
+
+        #navmenu-toggle ~ nav {
+            display: none;
+        }
+
+        #navmenu-toggle:checked ~ nav {
+            display: block;
+        }
+
+    .navmenu-icon {
+        cursor: pointer;
+        z-index: 10;
+        display: block;
+        position: absolute;
+        top: 15px;
+        left: unset;
+        right: 20px;
+        width: 20px;
+        height: 20px;
+        border: none;
+    }
+
+    [dir="rtl"] .navmenu-icon {
+        left: 20px;
+        right: unset;
+    }
+}
+
+/* Table */
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+    table td,
+    table th {
+        padding: var(--spacingVerticalS) var(--spacingHorizontalM);
+        text-align: left;
+        vertical-align: middle;
+        border-bottom: calc(var(--stroke-width) * 1px) solid var(--neutral-stroke-divider-rest);
+    }
+
+/* =============================================================
+   Microinteractions & UX Refinements
+   ============================================================= */
+
+/* Smooth focus transitions on interactive elements */
+fluent-button,
+fluent-text-field,
+fluent-select,
+fluent-checkbox,
+fluent-radio,
+fluent-text-area {
+    transition: box-shadow var(--pz-duration-fast, 100ms) var(--pz-easing-default),
+                border-color var(--pz-duration-fast, 100ms) var(--pz-easing-default);
+}
+
+/* Subtle hover lift on cards */
+fluent-card {
+    transition: box-shadow var(--pz-duration-normal, 200ms) var(--pz-easing-default);
+}
+
+fluent-card:hover {
+    box-shadow: var(--pz-shadow-8);
+}
+
+/* Smooth anchor / link transitions */
+a,
+fluent-anchor {
+    transition: color var(--pz-duration-fast, 100ms) ease;
+}
+
+/* Fade-in for page content */
+.content {
+    animation: pz-fade-in var(--pz-duration-normal, 200ms) var(--pz-easing-decelerate, ease-out);
+}
+
+@keyframes pz-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Smooth table row hover */
+table tr:hover td {
+    background: var(--neutral-fill-subtle-hover, var(--neutral-fill-secondary-rest));
+    transition: background var(--pz-duration-fast, 100ms) ease;
+}
+
+/* =============================================================
+   Icon color fix for accent buttons
+   SVGs slotted into fluent-button[appearance="accent"] remain
+   in the light DOM and do not automatically inherit the button's
+   shadow-DOM foreground color. We must set --foreground-on-accent-rest
+   explicitly so the icon is visible in both light and dark themes.
+   ============================================================= */
+fluent-button[appearance="accent"] svg {
+    color: var(--foreground-on-accent-rest, white);
+    fill: var(--foreground-on-accent-rest, white);
+}
+fluent-button[appearance="accent"] fluent-icon {
+    color: var(--foreground-on-accent-rest, white);
+}
+
+/* =============================================================
+   Chat input bar: flex container for the message compose area.
+   Using a native <div> avoids web-component flex quirks.
+   ============================================================= */
+.chat-input-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--neutral-stroke-rest);
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+.chat-input-bar fluent-text-field {
+    flex: 1;
+    min-width: 0;
+}
+
+/* =============================================================
+   Finalizado banner: displayed below the messages list when
+   the attendance is closed, replacing the input bar.
+   ============================================================= */
+.finalizado-banner {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 16px;
+    background: var(--colorStatusSuccessBackground2, rgba(0, 128, 0, 0.08));
+    border-top: 2px solid var(--colorStatusSuccessBorderActive, #107c10);
+    color: var(--neutral-foreground-rest);
+    flex-shrink: 0;
+}
+
+.comprovante-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    align-self: flex-start;
+    margin-top: 4px;
+    padding: 5px 12px;
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: var(--control-corner-radius, 4px);
+    color: var(--neutral-foreground-rest);
+    text-decoration: none;
+    font-size: var(--type-ramp-base-font-size);
+}

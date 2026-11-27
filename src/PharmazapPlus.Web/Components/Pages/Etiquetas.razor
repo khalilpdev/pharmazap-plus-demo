@@ -1,0 +1,494 @@
+@page "/etiquetas"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Atendente}")]
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<Etiquetas> Logger
+@inject IPharmazapApiService PharmazapApiService
+@inject IToastService ToastService
+
+<PageTitle>Etiquetas - Pharmazap Plus</PageTitle>
+
+<div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+    @if (CurrentUser != null)
+    {
+        <div style="flex-shrink: 0; width: 100%;">
+            <FluentCard Style="padding: 1rem 2rem; border-radius: 0; width: 100%;">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="12" Style="flex: 1; min-width: 0;">
+                        <FluentIcon Icon="@(Icons.Regular.Size32.Tag)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="min-width: 0;">
+                            <FluentLabel Typo="Typography.PageTitle" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Gerenciamento de Etiquetas</FluentLabel>
+                            <FluentLabel Typo="Typography.Body">Gerencie as etiquetas para categorizar clientes e atendimentos</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    @if (CanManageEtiquetas)
+                    {
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="margin-left: auto; flex-shrink: 0; width: auto;">
+                            <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovaEtiqueta">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Slot="start" Color="Color.Fill" />
+                                Nova Etiqueta
+                            </FluentButton>
+                        </FluentStack>
+                    }
+                </FluentStack>
+            </FluentCard>
+        </div>
+
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+            @if (IsAtendenteAtual && !CanManageEtiquetas)
+            {
+                <FluentMessageBar Intent="@MessageIntent.Info">
+                    Você pode consultar as etiquetas existentes e continuar etiquetando atendimentos normalmente. A criação e edição de etiquetas depende de liberação do administrador em Configurações Gerais.
+                </FluentMessageBar>
+            }
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 10; overflow: visible;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8"
+                             VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+                    <FluentTextField @bind-Value="@SearchQuery"
+                                    Placeholder="Buscar por nome..."
+                                    Style="flex: 1;"
+                                    Autocomplete="off"
+                                    @onkeydown="HandleSearchKeyDown">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Search)" Slot="start" />
+                    </FluentTextField>
+
+                    <FluentSelect TOption="FilterStatusEnum"
+                                 @bind-SelectedOption="@FilterStatus"
+                                 Style="min-width: 180px; position: relative; z-index: 10; overflow: visible;">
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.All)">Todos</FluentOption>
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.Active)">Ativas</FluentOption>
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.Inactive)">Inativas</FluentOption>
+                    </FluentSelect>
+
+                    <FluentButton Appearance="Appearance.Outline" @onclick="ClearFilters">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" Slot="start" />
+                        Limpar
+                    </FluentButton>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="32" Wrap="true">
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.Tag)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--accent-fill-rest);">@TotalEtiquetas</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Total de Etiquetas</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.TagMultiple)" Color="Color.Success" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusSuccessForeground3);">@EtiquetasAtivas</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Ativas</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.TagDismiss)" Color="Color.Warning" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusWarningForeground3);">@EtiquetasInativas</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Inativas</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                @if (IsLoading)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12" Style="padding: 3rem;">
+                        <FluentProgressRing />
+                        <FluentLabel>Carregando etiquetas...</FluentLabel>
+                    </FluentStack>
+                }
+                else if (!EtiquetasFiltradas.Any())
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12"
+                                 Style="padding: 4rem; text-align: center;">
+                        <FluentIcon Icon="@(Icons.Regular.Size48.Tag)" Style="color: var(--neutral-foreground-hint);" />
+                        <FluentLabel Typo="Typography.Subject">Nenhuma etiqueta encontrada</FluentLabel>
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">@EmptyStateMessage</FluentLabel>
+                        @if (CanManageEtiquetas)
+                        {
+                            <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovaEtiqueta">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Slot="start" Color="Color.Fill" />
+                                Criar Primeira Etiqueta
+                            </FluentButton>
+                        }
+                    </FluentStack>
+                }
+                else
+                {
+                    <FluentDataGrid Items="@EtiquetasFiltradas"
+                                   GridTemplateColumns="@(CanManageEtiquetas ? "minmax(180px,auto) minmax(120px,auto) minmax(100px,auto) minmax(140px,auto)" : "minmax(180px,auto) minmax(120px,auto) minmax(100px,auto)")"
+                                   Style="width: 100%; min-width: max-content; overflow-x: auto;">
+
+                        <TemplateColumn Title="Etiqueta" Sortable="true">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="10"
+                                         VerticalAlignment="VerticalAlignment.Center">
+                                <FluentIcon Icon="@(Icons.Filled.Size16.Circle)" Color="Color.Custom" CustomColor="@context.Cor" />
+                                <FluentLabel>@context.Nome</FluentLabel>
+                            </FluentStack>
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Cor">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8"
+                                         VerticalAlignment="VerticalAlignment.Center">
+                                <FluentIcon Icon="@(Icons.Filled.Size20.Square)" Color="Color.Custom" CustomColor="@context.Cor" />
+                                <FluentLabel Typo="Typography.Body" Style="font-family: monospace;">@context.Cor</FluentLabel>
+                            </FluentStack>
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Status">
+                            @if (context.Ativo)
+                            {
+                                <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@Consts.DesignTokens.SuccessBackground">Ativa</FluentBadge>
+                            }
+                            else
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral">Inativa</FluentBadge>
+                            }
+                        </TemplateColumn>
+
+                        @if (CanManageEtiquetas)
+                        {
+                            <TemplateColumn Title="Ações">
+                                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="4">
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                   Title="Editar"
+                                                   @onclick="@(() => ShowEditEtiqueta(context))">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Edit)" />
+                                    </FluentButton>
+                                    @if (context.Ativo)
+                                    {
+                                        <FluentButton Appearance="Appearance.Stealth"
+                                                       Title="Inativar"
+                                                       @onclick="@(() => ConfirmInativar(context))">
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.TagDismiss)" />
+                                        </FluentButton>
+                                    }
+                                    else
+                                    {
+                                        <FluentButton Appearance="Appearance.Stealth"
+                                                       Title="Ativar"
+                                                       @onclick="@(() => ConfirmAtivar(context))">
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.TagMultiple)" />
+                                        </FluentButton>
+                                    }
+                                </FluentStack>
+                            </TemplateColumn>
+                        }
+                    </FluentDataGrid>
+                }
+            </FluentCard>
+        </div>
+    }
+    else
+    {
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;">
+            <FluentProgressRing />
+            <FluentLabel>Carregando...</FluentLabel>
+        </div>
+    }
+</div>
+
+<!-- Confirmation Dialog for Inativar/Ativar -->
+<FluentDialog @ref="_confirmDialog" Modal="true" Hidden="@(!_showConfirmDialog)" TrapFocus="true"
+              @ondialogdismiss="CancelConfirm">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentLabel Typo="Typography.Subject">@_confirmTitle</FluentLabel>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CancelConfirm" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentLabel>@_confirmMessage</FluentLabel>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CancelConfirm">Cancelar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ExecuteConfirm">Confirmar</FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Form Dialog for Create/Edit -->
+<EtiquetaFormDialog Visible="@_showFormDialog"
+                    VisibleChanged="@OnFormDialogVisibleChanged"
+                    Etiqueta="@_editingEtiqueta"
+                    OnSave="@HandleFormSave" />
+
+@code {
+    private UserInfo? CurrentUser { get; set; }
+    private List<EtiquetaDto> EtiquetasList { get; set; } = new();
+
+    private IQueryable<EtiquetaDto> EtiquetasFiltradas
+    {
+        get
+        {
+            var filtered = EtiquetasList.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                filtered = filtered.Where(e =>
+                    e.Nome?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false);
+            }
+
+            filtered = FilterStatus switch
+            {
+                FilterStatusEnum.Active => filtered.Where(e => e.Ativo),
+                FilterStatusEnum.Inactive => filtered.Where(e => !e.Ativo),
+                _ => filtered
+            };
+
+            return filtered.AsQueryable();
+        }
+    }
+
+    private string SearchQuery { get; set; } = "";
+    private FilterStatusEnum FilterStatus { get; set; } = FilterStatusEnum.All;
+    private bool IsLoading { get; set; } = true;
+    private bool CanManageEtiquetas { get; set; }
+    private bool IsAdministradorAtual { get; set; }
+    private bool IsAtendenteAtual { get; set; }
+
+    private int TotalEtiquetas => EtiquetasList.Count;
+    private int EtiquetasAtivas => EtiquetasList.Count(e => e.Ativo);
+    private int EtiquetasInativas => EtiquetasList.Count(e => !e.Ativo);
+    private string EmptyStateMessage => CanManageEtiquetas
+        ? "Crie etiquetas para categorizar seus clientes e atendimentos"
+        : "Nenhuma etiqueta foi cadastrada para sua farmácia.";
+
+    // Form dialog
+    private bool _showFormDialog = false;
+    private EtiquetaDto? _editingEtiqueta = null;
+
+    // Confirmation dialog
+    private FluentDialog? _confirmDialog;
+    private bool _showConfirmDialog = false;
+    private string _confirmTitle = "";
+    private string _confirmMessage = "";
+    private Func<Task>? _confirmAction;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            SearchQuery = "";
+            FilterStatus = FilterStatusEnum.All;
+
+            CurrentUser = await AuthService.GetUserInfo();
+            if (CurrentUser == null)
+            {
+                Navigation.NavigateTo(Consts.Web.LoginPath, true);
+                return;
+            }
+
+            // Regra de negócio:
+            // - Somente Atendente pode ficar em modo leitura (quando não liberado em Configurações Gerais)
+            // - Administrador tem acesso total sempre
+            IsAtendenteAtual = string.Equals(
+                CurrentUser.Role,
+                UserRoles.Atendente,
+                StringComparison.OrdinalIgnoreCase);
+
+            IsAdministradorAtual = !IsAtendenteAtual;
+
+            CanManageEtiquetas = IsAdministradorAtual
+                || await PharmazapApiService.CanManageEtiquetasAsync();
+
+            await InvokeAsync(StateHasChanged);
+            await LoadEtiquetas();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing etiquetas page");
+            Navigation.NavigateTo(Consts.Web.LoginPath, true);
+        }
+    }
+
+    private async Task LoadEtiquetas()
+    {
+        IsLoading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            EtiquetasList = await PharmazapApiService.GetEtiquetasAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading etiquetas");
+            ToastService.ShowError("Erro ao carregar etiquetas.");
+        }
+        finally
+        {
+            IsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            StateHasChanged();
+    }
+
+    private void ClearFilters()
+    {
+        SearchQuery = "";
+        FilterStatus = FilterStatusEnum.All;
+        StateHasChanged();
+    }
+
+    private void ShowNovaEtiqueta()
+    {
+        if (!CanManageEtiquetas)
+        {
+            ToastService.ShowError("Você tem acesso somente leitura às etiquetas.");
+            return;
+        }
+
+        _editingEtiqueta = null;
+        _showFormDialog = true;
+    }
+
+    private void ShowEditEtiqueta(EtiquetaDto etiqueta)
+    {
+        if (!CanManageEtiquetas)
+        {
+            ToastService.ShowError("Você tem acesso somente leitura às etiquetas.");
+            return;
+        }
+
+        _editingEtiqueta = etiqueta;
+        _showFormDialog = true;
+    }
+
+    private async Task OnFormDialogVisibleChanged(bool visible)
+    {
+        _showFormDialog = visible;
+        StateHasChanged();
+    }
+
+    private async Task HandleFormSave((bool IsNew, CreateEtiquetaDto? Create, UpdateEtiquetaDto? Update) args)
+    {
+        if (!CanManageEtiquetas)
+        {
+            ToastService.ShowError("Você tem acesso somente leitura às etiquetas.");
+            _showFormDialog = false;
+            _editingEtiqueta = null;
+            return;
+        }
+
+        _showFormDialog = false;
+
+        if (args.IsNew && args.Create != null)
+        {
+            var (success, message) = await PharmazapApiService.CreateEtiquetaAsync(args.Create);
+            if (success)
+            {
+                ToastService.ShowSuccess("Etiqueta criada com sucesso!");
+                await LoadEtiquetas();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao criar etiqueta: {message}");
+            }
+        }
+        else if (!args.IsNew && args.Update != null && _editingEtiqueta != null)
+        {
+            var (success, message) = await PharmazapApiService.UpdateEtiquetaAsync(_editingEtiqueta.Id, args.Update);
+            if (success)
+            {
+                ToastService.ShowSuccess("Etiqueta atualizada com sucesso!");
+                await LoadEtiquetas();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao atualizar etiqueta: {message}");
+            }
+        }
+        _editingEtiqueta = null;
+    }
+
+    private void ConfirmInativar(EtiquetaDto etiqueta)
+    {
+        if (!CanManageEtiquetas)
+        {
+            ToastService.ShowError("Você tem acesso somente leitura às etiquetas.");
+            return;
+        }
+
+        _confirmTitle = "Inativar Etiqueta";
+        _confirmMessage = $"Tem certeza que deseja inativar a etiqueta \"{etiqueta.Nome}\"?";
+        _confirmAction = async () =>
+        {
+            var (success, message) = await PharmazapApiService.InativarEtiquetaAsync(etiqueta.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess("Etiqueta inativada com sucesso!");
+                await LoadEtiquetas();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao inativar etiqueta: {message}");
+            }
+        };
+        _showConfirmDialog = true;
+    }
+
+    private void ConfirmAtivar(EtiquetaDto etiqueta)
+    {
+        if (!CanManageEtiquetas)
+        {
+            ToastService.ShowError("Você tem acesso somente leitura às etiquetas.");
+            return;
+        }
+
+        _confirmTitle = "Ativar Etiqueta";
+        _confirmMessage = $"Tem certeza que deseja ativar a etiqueta \"{etiqueta.Nome}\"?";
+        _confirmAction = async () =>
+        {
+            var (success, message) = await PharmazapApiService.AtivarEtiquetaAsync(etiqueta.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess("Etiqueta ativada com sucesso!");
+                await LoadEtiquetas();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao ativar etiqueta: {message}");
+            }
+        };
+        _showConfirmDialog = true;
+    }
+
+    private void CancelConfirm()
+    {
+        _showConfirmDialog = false;
+        _confirmAction = null;
+    }
+
+    private async Task ExecuteConfirm()
+    {
+        _showConfirmDialog = false;
+        if (_confirmAction != null)
+        {
+            await _confirmAction();
+            _confirmAction = null;
+        }
+    }
+}

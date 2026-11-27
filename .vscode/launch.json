@@ -1,0 +1,51 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/PharmazapPlus.API/bin/Debug/net10.0/PharmazapPlus.API.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/PharmazapPlus.API",
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    {
+      "name": "WEB",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/PharmazapPlus.Web/bin/Debug/net10.0/PharmazapPlus.Web.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/PharmazapPlus.Web",
+      "stopAtEntry": false,
+      // Removido o serverReadyAction daqui para evitar que abra o navegador padrão
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Launch Firefox",
+      "type": "firefox",
+      "request": "launch",
+      "url": "https://localhost:7160", // Verifique se esta é a porta correta do seu projeto WEB
+      "reAttach": true
+    }
+  ],
+  "compounds": [
+    {
+      "name": "API + WEB",
+      "configurations": [
+        "API",
+        "WEB",
+        "Launch Firefox"
+      ]
+    }
+  ]
+}

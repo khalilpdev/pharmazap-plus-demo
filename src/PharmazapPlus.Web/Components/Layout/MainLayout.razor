@@ -1,0 +1,153 @@
+﻿@inherits LayoutComponentBase
+
+@inject IAuthService AuthService
+@inject ThemeService ThemeService
+@inject ILocalStorageService LocalStorageService
+@inject IJSRuntime JS
+@implements IDisposable
+
+@code {
+    private const string FontScaleStorageKey = "fontScalePercent";
+    private const int MinFontScalePercent = 85;
+    private const int MaxFontScalePercent = 130;
+    private const int FontScaleStepPercent = 5;
+
+    private int _fontScalePercent = 100;
+
+    private DesignThemeModes Mode
+    {
+        get => ThemeService.CurrentMode;
+        set => ThemeService.SetTheme(value);
+    }
+
+    private string? AccentColor
+    {
+        get => ThemeService.CurrentAccentColor;
+        set => ThemeService.SetAccentColor(value);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await AuthService.Initialize();
+        }
+        catch { }
+        ThemeService.OnThemeChanged += OnThemeChanged;
+    }
+
+    private void OnThemeChanged() => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        var savedScale = await LocalStorageService.GetItemAsync<int?>(FontScaleStorageKey);
+        var clampedScale = savedScale.HasValue
+            ? Math.Clamp(savedScale.Value, MinFontScalePercent, MaxFontScalePercent)
+            : _fontScalePercent;
+
+        _fontScalePercent = clampedScale;
+        await ApplyFontScaleAsync();
+        StateHasChanged();
+    }
+
+    private async Task ApplyFontScaleAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("layoutInterop.setRootFontScale", _fontScalePercent);
+        }
+        catch
+        {
+            // JS interop may fail during prerendering or if layout.js is not yet loaded; safe to ignore.
+        }
+    }
+
+    private async Task ToggleTheme()
+    {
+        var newMode = ThemeService.CurrentMode == DesignThemeModes.Dark
+            ? DesignThemeModes.Light
+            : DesignThemeModes.Dark;
+        ThemeService.SetTheme(newMode);
+        await AuthService.UpdateTheme(newMode.ToString());
+    }
+
+    private async Task IncreaseFontSize()
+    {
+        if (_fontScalePercent >= MaxFontScalePercent) return;
+
+        _fontScalePercent += FontScaleStepPercent;
+        await LocalStorageService.SetItemAsync(FontScaleStorageKey, _fontScalePercent);
+        await ApplyFontScaleAsync();
+        StateHasChanged();
+    }
+
+    private async Task DecreaseFontSize()
+    {
+        if (_fontScalePercent <= MinFontScalePercent) return;
+
+        _fontScalePercent -= FontScaleStepPercent;
+        await LocalStorageService.SetItemAsync(FontScaleStorageKey, _fontScalePercent);
+        await ApplyFontScaleAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose() => ThemeService.OnThemeChanged -= OnThemeChanged;
+}
+
+<FluentDesignTheme @bind-Mode="@Mode" @bind-CustomColor="@AccentColor" StorageName="theme" />
+
+<FluentLayout>
+    <FluentDialogProvider @rendermode="@InteractiveServer" />
+    <FluentToastProvider MaxToastCount="10" @rendermode="@InteractiveServer" />
+    <FluentMenuProvider @rendermode="@InteractiveServer" />
+    <FluentHeader Style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+        <span>PharmazapPlus</span>
+        <div class="header-actions">
+            <FluentButton Appearance="Appearance.Stealth"
+                          Title="Diminuir fonte"
+                          aria-label="Diminuir fonte"
+                          Disabled="@(_fontScalePercent <= MinFontScalePercent)"
+                          @onclick="DecreaseFontSize">
+                <span class="font-size-icon">-</span>
+            </FluentButton>
+
+            <FluentButton Appearance="Appearance.Stealth"
+                          Title="Aumentar fonte"
+                          aria-label="Aumentar fonte"
+                          Disabled="@(_fontScalePercent >= MaxFontScalePercent)"
+                          @onclick="IncreaseFontSize">
+                <span class="font-size-icon">+</span>
+            </FluentButton>
+
+            <FluentButton Appearance="Appearance.Stealth"
+                          Title="@(ThemeService.CurrentMode == DesignThemeModes.Dark ? "Mudar para Tema Claro" : "Mudar para Tema Escuro")"
+                          aria-label="@(ThemeService.CurrentMode == DesignThemeModes.Dark ? "Mudar para Tema Claro" : "Mudar para Tema Escuro")"
+                          @onclick="ToggleTheme">
+                @if (ThemeService.CurrentMode == DesignThemeModes.Dark)
+                {
+                    <FluentIcon Value="@(new Icons.Regular.Size24.WeatherSunny())" />
+                }
+                else
+                {
+                    <FluentIcon Value="@(new Icons.Regular.Size24.WeatherMoon())" />
+                }
+            </FluentButton>
+        </div>
+    </FluentHeader>
+    <FluentStack Class="main" Orientation="Orientation.Horizontal" Width="100%">
+        <NavMenu />
+        <FluentBodyContent Class="body-content">
+            <div class="content" @key="@ThemeService.CurrentMode.ToString()">
+                @Body
+            </div>
+        </FluentBodyContent>
+    </FluentStack>
+</FluentLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>

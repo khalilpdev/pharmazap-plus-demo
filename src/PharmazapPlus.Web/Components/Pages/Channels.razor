@@ -1,0 +1,375 @@
+@page "/channels"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Desenvolvedor}")]
+
+@inject NavigationManager Navigation
+@inject ILogger<Channels> Logger
+@inject IChannelService ChannelService
+@inject IToastService ToastService
+
+<PageTitle>Canais - Pharmazap Plus</PageTitle>
+
+<div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+    <div style="flex-shrink: 0; width: 100%;">
+        <FluentCard Style="padding: 1rem 2rem; border-radius: 0; width: 100%;">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                             HorizontalGap="12" Style="flex: 1; min-width: 0;">
+                    <FluentIcon Icon="@(Icons.Regular.Size32.Link)" Color="Color.Accent" />
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="min-width: 0;">
+                        <FluentLabel Typo="Typography.PageTitle" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Canais de Integração</FluentLabel>
+                        <FluentLabel Typo="Typography.Body">Gerencie as integrações de WhatsApp e Instagram</FluentLabel>
+                    </FluentStack>
+                </FluentStack>
+                <FluentButton Appearance="Appearance.Accent"
+                              @onclick="NavigateToCreateChannel">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Slot="start" Color="Color.Fill" />
+                    Adicionar Canal
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Outline"
+                              @onclick="RefreshEvolutionStatusesAsync"
+                              Disabled="@(_refreshingEvolutionStatus || !HasNonOfficialWhatsAppChannels)">
+                    @if (_refreshingEvolutionStatus)
+                    {
+                        <FluentProgressRing Style="width: 14px; height: 14px; margin-right: 6px;" />
+                    }
+                    else
+                    {
+                        <FluentIcon Icon="@(Icons.Regular.Size16.ArrowClockwise)" Slot="start" />
+                    }
+                    Validar status Evolution
+                </FluentButton>
+            </FluentStack>
+        </FluentCard>
+    </div>
+
+    <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+        <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+            @if (IsLoading)
+            {
+                <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                             VerticalAlignment="VerticalAlignment.Center" VerticalGap="12" Style="padding: 3rem;">
+                    <FluentProgressRing />
+                    <FluentLabel>Carregando canais...</FluentLabel>
+                </FluentStack>
+            }
+            else if (!ChannelsList.Any())
+            {
+                <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                             VerticalAlignment="VerticalAlignment.Center" VerticalGap="12"
+                             Style="padding: 4rem; text-align: center;">
+                    <FluentIcon Icon="@(Icons.Regular.Size48.Link)" Style="color: var(--neutral-foreground-hint);" />
+                    <FluentLabel Typo="Typography.Subject">Nenhum canal encontrado</FluentLabel>
+                    <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Configure integrações de WhatsApp e Instagram para sua farmácia</FluentLabel>
+                </FluentStack>
+            }
+            else
+            {
+                <FluentDataGrid Items="@ChannelsList.AsQueryable()"
+                                TGridItem="ChannelListItem"
+                                RowSize="DataGridRowSize.Large"
+                                GridTemplateColumns="minmax(220px, auto) minmax(220px, auto) minmax(220px, auto) minmax(180px, auto)"
+                                Style="width: 100%; overflow-x: auto; min-width: max-content;">
+                    <TemplateColumn Title="Canal">
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                     VerticalAlignment="VerticalAlignment.Center">
+                            <ChannelIcon Canal="@GetCanalEnum(context)" />
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                                <FluentLabel>@context.Name</FluentLabel>
+                                <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); font-size: 0.85em;">
+                                    @(context.IsOfficial ? "Oficial (Meta)" : "Não oficial")
+                                </FluentLabel>
+                            </FluentStack>
+                        </FluentStack>
+                    </TemplateColumn>
+
+                    <TemplateColumn Title="Status">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="6">
+                            @if (context.Configured)
+                            {
+                                <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@Consts.DesignTokens.SuccessBackground">Configurado</FluentBadge>
+                            }
+                            else
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral">Não configurado</FluentBadge>
+                            }
+
+                            @if (context.Type == Consts.CanalTipo.WhatsApp && !context.IsOfficial)
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral">@GetEvolutionStatusLabel(context.EvolutionStatus)</FluentBadge>
+                            }
+                        </FluentStack>
+                    </TemplateColumn>
+
+                    <TemplateColumn Title="Resumo">
+                        @if (context.Configured && !string.IsNullOrWhiteSpace(context.Summary))
+                        {
+                            <FluentLabel Style="font-family: monospace; font-size: 0.85em; word-break: break-all;">@context.Summary</FluentLabel>
+                        }
+                        else
+                        {
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">---</FluentLabel>
+                        }
+                    </TemplateColumn>
+
+                    <TemplateColumn Title="Ações">
+                        <div style="display: flex; align-items: center; height: 100%;">
+                            <FluentStack Orientation="Orientation.Horizontal"
+                                         HorizontalGap="6"
+                                         VerticalAlignment="VerticalAlignment.Center">
+                                @if (context.Configured)
+                                {
+                                    <FluentButton Appearance="Appearance.Accent"
+                                                   Title="Editar"
+                                                   @onclick="@(() => EditChannel(context))">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Edit)" Slot="start" Color="Color.Fill" />
+                                        Editar
+                                    </FluentButton>
+                                }
+                                else
+                                {
+                                    <FluentButton Appearance="Appearance.Outline"
+                                                   Title="Configurar"
+                                                   @onclick="@(() => EditChannel(context))">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Slot="start" />
+                                        Configurar
+                                    </FluentButton>
+                                }
+
+                                <FluentButton Appearance="Appearance.Stealth"
+                                               Title="Excluir"
+                                               @onclick="@(() => ConfirmDeleteChannel(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Delete)" Style="color: var(--error-foreground);" />
+                                </FluentButton>
+                            </FluentStack>
+                        </div>
+                    </TemplateColumn>
+                </FluentDataGrid>
+            }
+        </FluentCard>
+    </div>
+</div>
+
+<FluentDialog Modal="true" Hidden="@(!_showDeleteDialog)" TrapFocus="true"
+              @ondialogdismiss="CloseDeleteDialog" Style="width: min(520px, 95vw);">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Delete)" />
+                <FluentLabel Typo="Typography.Subject">Excluir Canal</FluentLabel>
+            </FluentStack>
+            <div style="margin-left: auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseDeleteDialog" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="padding: 0.5rem 0;">
+            <FluentMessageBar Intent="@MessageIntent.Warning" Style="width: 100%;">
+                Excluir <strong>@(_channelToDelete?.Name ?? "este canal")</strong> pode parar o envio e o recebimento de mensagens dessa integração.
+            </FluentMessageBar>
+            <FluentLabel>
+                Tem certeza que deseja apagar esse canal? Se a instância estiver em uso, ela pode parar de funcionar no PharmazapPlus.
+            </FluentLabel>
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseDeleteDialog">Cancelar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ConfirmDeleteChannelAsync" Disabled="@_deletingChannel">
+            @if (_deletingChannel)
+            {
+                <FluentProgressRing Style="width: 14px; height: 14px; margin-right: 6px;" />
+            }
+            <span>Apagar</span>
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    private List<ChannelListItem> ChannelsList { get; set; } = new();
+    private bool IsLoading { get; set; } = true;
+    private bool _showDeleteDialog;
+    private bool _deletingChannel;
+    private bool _refreshingEvolutionStatus;
+    private ChannelListItem? _channelToDelete;
+    private bool HasNonOfficialWhatsAppChannels =>
+        ChannelsList.Any(c => c.Type == Consts.CanalTipo.WhatsApp && !c.IsOfficial && c.Configured && !string.IsNullOrWhiteSpace(c.InstanceName));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            await LoadChannels();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing channels page");
+            ToastService.ShowError("Erro ao inicializar a página de canais.");
+        }
+    }
+
+    private async Task LoadChannels()
+    {
+        IsLoading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var (success, channels, message) = await ChannelService.GetChannelsAsync();
+            if (success)
+            {
+                ChannelsList = channels;
+                await RefreshEvolutionStatusesAsync(showToast: false);
+            }
+            else
+            {
+                ToastService.ShowError(message);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading channels");
+            ToastService.ShowError("Erro ao carregar canais.");
+        }
+        finally
+        {
+            IsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static CanalEnum GetCanalEnum(ChannelListItem channel)
+    {
+        return channel.Type switch
+        {
+            2 => CanalEnum.Instagram,
+            _ => CanalEnum.WhatsApp
+        };
+    }
+
+    private async Task RefreshEvolutionStatusesAsync()
+    {
+        await RefreshEvolutionStatusesAsync(showToast: true);
+    }
+
+    private async Task RefreshEvolutionStatusesAsync(bool showToast)
+    {
+        if (_refreshingEvolutionStatus)
+            return;
+
+        var targets = ChannelsList
+            .Where(c => c.Type == Consts.CanalTipo.WhatsApp && !c.IsOfficial && c.Configured && !string.IsNullOrWhiteSpace(c.InstanceName))
+            .ToList();
+
+        if (targets.Count == 0)
+        {
+            if (showToast)
+                ToastService.ShowInfo("Nenhum canal WhatsApp não oficial configurado para validar.");
+            return;
+        }
+
+        _refreshingEvolutionStatus = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            foreach (var channel in targets)
+            {
+                var result = await ChannelService.GetWhatsAppStatusAsync(channel.InstanceName!, string.Empty, string.Empty);
+                channel.EvolutionStatus = result.Success
+                    ? NormalizeEvolutionStatus(result.Status)
+                    : "ERROR";
+            }
+
+            if (showToast)
+                ToastService.ShowSuccess("Status da Evolution atualizado.");
+        }
+        finally
+        {
+            _refreshingEvolutionStatus = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static string GetEvolutionStatusLabel(string? status)
+    {
+        var normalized = NormalizeEvolutionStatus(status);
+        return normalized switch
+        {
+            Consts.EvolutionGoInstance.StatusOpen or Consts.EvolutionGoInstance.StatusConnected => "Evolution: conectado",
+            Consts.EvolutionGoInstance.StatusClose or Consts.EvolutionGoInstance.StatusDisconnected => "Evolution: desconectado",
+            Consts.EvolutionGoInstance.StatusQrCode => "Evolution: aguardando QR",
+            "NOT_FOUND" => "Evolution: instância não encontrada",
+            "ERROR" => "Evolution: erro de validação",
+            _ => "Evolution: não verificado"
+        };
+    }
+
+    private static string NormalizeEvolutionStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return string.Empty;
+
+        var normalized = status.Trim().ToUpperInvariant();
+        if (normalized.Contains("NOT_FOUND", StringComparison.Ordinal))
+            return "NOT_FOUND";
+
+        return normalized;
+    }
+
+    private void EditChannel(ChannelListItem channel)
+    {
+        Navigation.NavigateTo($"/channels/edit/{channel.Id}");
+    }
+
+    private void ConfirmDeleteChannel(ChannelListItem channel)
+    {
+        _channelToDelete = channel;
+        _showDeleteDialog = true;
+    }
+
+    private void CloseDeleteDialog()
+    {
+        _showDeleteDialog = false;
+        _channelToDelete = null;
+    }
+
+    private async Task ConfirmDeleteChannelAsync()
+    {
+        if (_channelToDelete == null || _deletingChannel)
+            return;
+
+        _deletingChannel = true;
+        try
+        {
+            var (success, message) = await ChannelService.DeleteChannelAsync(_channelToDelete.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess(message);
+                CloseDeleteDialog();
+                await LoadChannels();
+            }
+            else
+            {
+                ToastService.ShowError(message);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deleting channel {ChannelId}", _channelToDelete.Id);
+            ToastService.ShowError("Erro ao excluir canal.");
+        }
+        finally
+        {
+            _deletingChannel = false;
+        }
+    }
+
+    private void NavigateToCreateChannel()
+    {
+        Navigation.NavigateTo("/channels/create");
+    }
+}

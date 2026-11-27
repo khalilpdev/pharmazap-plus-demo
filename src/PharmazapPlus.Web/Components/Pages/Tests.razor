@@ -1,0 +1,1792 @@
+@page "/tests"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = UserRoles.Administrador)]
+
+@using System.Diagnostics
+@using System.Net.Http.Headers
+@using System.Text
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<Tests> Logger
+@inject IPharmazapApiService PharmazapApiService
+@inject IChannelService ChannelService
+@inject IConfiguration Configuration
+@inject IHttpClientFactory HttpClientFactory
+@inject IToastService ToastService
+
+@implements IDisposable
+
+<PageTitle>Diagnóstico - Pharmazap Plus</PageTitle>
+
+<div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+    @if (CurrentUser != null)
+    {
+        <!-- Header -->
+        <div style="flex-shrink: 0; width: 100%;">
+            <FluentCard Style="padding: 1rem 2rem; border-radius: 0; width: 100%;">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="12" Style="flex: 1; min-width: 0;">
+                        <FluentIcon Icon="@(Icons.Regular.Size32.Beaker)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="min-width: 0;">
+                            <FluentLabel Typo="Typography.PageTitle" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Diagnóstico e Testes</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Ferramentas de diagnóstico rápido — visível apenas para Administradores</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+        </div>
+
+        <!-- Content -->
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 2rem; box-sizing: border-box;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="margin-bottom: 1.5rem;">
+                <FluentLabel Typo="Typography.Subject" Style="font-weight: 700;">Logs do cadastro de canais</FluentLabel>
+                <FluentLabel Style="color: var(--neutral-foreground-hint);">
+                    Abra o painel para ver apenas os logs das integrações cadastradas nesta farmácia.
+                </FluentLabel>
+                <ChannelLogsPanel />
+            </FluentStack>
+
+            <FluentGrid Spacing="4" Justify="JustifyContent.FlexStart" Style="width: 100%; box-sizing: border-box;">
+
+                <!-- Card 1: Mock WhatsApp / Instagram -->
+                <FluentGridItem xs="12" sm="6" lg="4">
+                    <FluentCard Style="padding: 1.5rem; height: 100%; display: flex; flex-direction: column; gap: 1rem;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8" Style="flex: 1;">
+                            <FluentIcon Icon="@(Icons.Regular.Size32.ChatBubblesQuestion)" Color="Color.Accent" />
+                            <FluentLabel Typo="Typography.Subject" Style="font-weight: 600;">Envio de Mensagem Mock</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); flex: 1;">
+                                Simula o recebimento de uma mensagem de um cliente ou grupo via WhatsApp ou Instagram, criando um atendimento pendente.
+                            </FluentLabel>
+                        </FluentStack>
+                        <FluentButton Appearance="Appearance.Accent" @onclick="OpenMockWhatsAppDialog" Style="width: 100%; white-space: normal; height: auto; min-height: 2.25rem;">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.ChatBubblesQuestion)" Slot="start" Color="Color.Fill" />
+                            WhatsApp - Simular Mensagem de um cliente
+                        </FluentButton>
+                        <FluentButton Appearance="Appearance.Accent" @onclick="OpenMockInstagramDialog" Style="width: 100%; white-space: normal; height: auto; min-height: 2.25rem; margin-top: 0.5rem;">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Camera)" Slot="start" Color="Color.Fill" />
+                            Instagram - Simular Mensagem de um cliente
+                        </FluentButton>
+                    </FluentCard>
+                </FluentGridItem>
+
+                <!-- Card 2: API Health -->
+                <FluentGridItem xs="12" sm="6" lg="4">
+                    <FluentCard Style="padding: 1.5rem; height: 100%; display: flex; flex-direction: column; gap: 1rem;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8" Style="flex: 1;">
+                            <FluentIcon Icon="@(Icons.Regular.Size32.Cloud)" Color="Color.Accent" />
+                            <FluentLabel Typo="Typography.Subject" Style="font-weight: 600;">Status da API</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); flex: 1;">
+                                Verifica se a API está online, consulta o health check e informações do sistema.
+                            </FluentLabel>
+                        </FluentStack>
+                        <FluentButton Appearance="Appearance.Accent" @onclick="OpenApiHealthDialog" Style="width: 100%; white-space: normal; height: auto; min-height: 2.25rem;">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.ArrowSync)" Slot="start" Color="Color.Fill" />
+                            Testar Status da API e Conexão de Banco de Dados
+                        </FluentButton>
+                    </FluentCard>
+                </FluentGridItem>
+
+                <!-- Card 3: Queue Stats -->
+                <FluentGridItem xs="12" sm="6" lg="4">
+                    <FluentCard Style="padding: 1.5rem; height: 100%; display: flex; flex-direction: column; gap: 1rem;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8" Style="flex: 1;">
+                            <FluentIcon Icon="@(Icons.Regular.Size32.Settings)" Color="Color.Accent" />
+                            <FluentLabel Typo="Typography.Subject" Style="font-weight: 600;">Fila de Mensagens (Redis)</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); flex: 1;">
+                                Consulta as contagens das filas Redis (novas mensagens, notificações, agendamentos).
+                            </FluentLabel>
+                        </FluentStack>
+                        <FluentButton Appearance="Appearance.Accent" @onclick="OpenQueueStatsDialog" Style="width: 100%; white-space: normal; height: auto; min-height: 2.25rem;">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.ArrowSort)" Slot="start" Color="Color.Fill" />
+                            Verificar Fila de Mensagens (Redis)
+                        </FluentButton>
+                    </FluentCard>
+                </FluentGridItem>
+
+                <!-- Card 4: Dashboard Stats -->
+                <FluentGridItem xs="12" sm="6" lg="4">
+                    <FluentCard Style="padding: 1.5rem; height: 100%; display: flex; flex-direction: column; gap: 1rem;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8" Style="flex: 1;">
+                            <FluentIcon Icon="@(Icons.Regular.Size32.DataBarVertical)" Color="Color.Accent" />
+                            <FluentLabel Typo="Typography.Subject" Style="font-weight: 600;">Dashboard Stats</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); flex: 1;">
+                                Busca as estatísticas do dashboard para o usuário Administrador autenticado.
+                            </FluentLabel>
+                        </FluentStack>
+                        <FluentButton Appearance="Appearance.Accent" @onclick="OpenDashboardStatsDialog" Style="width: 100%; white-space: normal; height: auto; min-height: 2.25rem;">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.DataBarVertical)" Slot="start" Color="Color.Fill" />
+                            Testar Dashboard Stats (Administrador)
+                        </FluentButton>
+                    </FluentCard>
+                </FluentGridItem>
+
+                <!-- Card 5: Evolution API -->
+                <FluentGridItem xs="12" sm="6" lg="4">
+                    <FluentCard Style="padding: 1.5rem; height: 100%; display: flex; flex-direction: column; gap: 1rem;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8" Style="flex: 1;">
+                            <FluentIcon Icon="@(Icons.Regular.Size32.PlugConnected)" Color="Color.Accent" />
+                            <FluentLabel Typo="Typography.Subject" Style="font-weight: 600;">Evolution API (Não-Oficial)</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); flex: 1;">
+                                Testa a conectividade com a Evolution API não-oficial. Informe a URL e a API Key para verificar se o servidor está acessível.
+                            </FluentLabel>
+                        </FluentStack>
+                        <FluentButton Appearance="Appearance.Accent" @onclick="OpenEvolutionDialog" Style="width: 100%; white-space: normal; height: auto; min-height: 2.25rem;">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.PlugConnected)" Slot="start" Color="Color.Fill" />
+                            Testar Conexão com Evolution API
+                        </FluentButton>
+                    </FluentCard>
+                </FluentGridItem>
+
+            </FluentGrid>
+        </div>
+    }
+    else if (_isLoading)
+    {
+        <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+            <FluentProgressRing />
+        </div>
+    }
+</div>
+
+<!-- =============================== -->
+<!-- Dialog 1: Mock WhatsApp Message -->
+<!-- =============================== -->
+<FluentDialog Modal="true" Hidden="@(!_showMockWhatsAppDialog)" TrapFocus="true"
+              @ondialogdismiss="CloseMockWhatsAppDialog"
+              Style="width: 520px;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.ChatBubblesQuestion)" />
+                <FluentLabel Typo="Typography.Subject">Testar Envio de Mensagem Mock WhatsApp</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseMockWhatsAppDialog" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0;">
+            <div>
+                <FluentLabel Style="display: block; margin-bottom: 4px;">Número de telefone (From)</FluentLabel>
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Bottom">
+                    <FluentTextField Value="+55"
+                                     ReadOnly="true"
+                                     Style="width: 64px; flex-shrink: 0;"
+                                     Autocomplete="off" />
+                    <FluentTextField Value="@_mockPhoneNumber"
+                                     ValueChanged="@(v => _mockPhoneNumber = v.MaskTelefoneInput())"
+                                     Immediate="true"
+                                     Placeholder="(62) 99123-6501"
+                                     MaxLength="16"
+                                     Style="flex: 1;"
+                                     Autocomplete="off" />
+                </FluentStack>
+            </div>
+            @if (CurrentUser?.IsAdministrador == false)
+            {
+                <FluentTextField @bind-Value="_mockFarmaciaIdStr"
+                                 Label="FarmaciaId"
+                                 Placeholder="1"
+                                 Style="width: 100%;"
+                                 Autocomplete="off" />
+            }
+            <FluentTextField @bind-Value="_mockText"
+                             Label="Texto da mensagem"
+                             Placeholder="Olá, preciso renovar minha receita"
+                             Style="width: 100%;"
+                             Autocomplete="off" />
+            <FluentLabel Style="display: block; margin-top: 4px; font-size: 0.8rem; color: var(--neutral-foreground-hint);">
+                Se precisar de dados mock, atualize o .env e contate o administrador.
+            </FluentLabel>
+
+            <FluentCheckbox @bind-Value="@_mockIsGroup">
+                Simular recebimento de grupo do WhatsApp (Evolution Go)
+            </FluentCheckbox>
+
+            @if (_isMockLoading)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentProgressRing Style="width: 20px; height: 20px;" />
+                    <FluentLabel>Enviando mensagem mock...</FluentLabel>
+                </FluentStack>
+            }
+            else if (_mockResult != null)
+            {
+                @if (_mockResult.Success)
+                {
+                    <FluentCard Style="padding: 1rem;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                            <FluentBadge Appearance="Appearance.Accent">✅ Mensagem simulada com sucesso</FluentBadge>
+                            <FluentLabel>Atendimento ID: <strong>@_mockResult.AtendimentoId</strong></FluentLabel>
+                            <FluentLabel>Novo Atendimento: <strong>@(_mockResult.NovoAtendimento ? "Sim" : "Não")</strong></FluentLabel>
+                            <FluentLabel>Status: <strong>@_mockResult.Status</strong></FluentLabel>
+                        </FluentStack>
+                    </FluentCard>
+                }
+                else
+                {
+                    <FluentCard Style="padding: 1rem; background: var(--error-fill-rest, #f8d7da);">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                            <FluentBadge Appearance="Appearance.Neutral">❌ Erro ao enviar mensagem</FluentBadge>
+                            <FluentLabel Style="margin-top: 0.5rem; color: var(--error-foreground, #721c24); font-weight: 600;">@_mockResult.ErrorMessage</FluentLabel>
+                            
+                            @if (_mockResult.Details != null)
+                            {
+                                <FluentDivider Style="margin: 0.5rem 0;"/>
+                                <FluentLabel Typo="Typography.Body" Style="color: var(--error-foreground, #721c24); font-weight: 600;">Detalhes do Erro:</FluentLabel>
+                                
+                                @if (!string.IsNullOrEmpty(_mockResult.Details.InnerException))
+                                {
+                                    <FluentLabel Style="color: var(--error-foreground, #721c24); font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; word-break: break-word;">
+                                        <strong>Inner Exception:</strong> @_mockResult.Details.InnerException
+                                    </FluentLabel>
+                                }
+                                
+                                @if (_mockResult.Details.StackTrace != null && _mockResult.Details.StackTrace.Length > 0)
+                                {
+                                    <FluentLabel Style="color: var(--error-foreground, #721c24); font-weight: 600; margin-top: 0.5rem;">Stack Trace (primeiras linhas):</FluentLabel>
+                                    <FluentLabel Style="color: var(--error-foreground, #721c24); font-family: monospace; font-size: 0.75rem; white-space: pre-wrap; word-break: break-word;">
+                                        @string.Join("\n", _mockResult.Details.StackTrace.Take(3))
+                                    </FluentLabel>
+                                }
+                            }
+                        </FluentStack>
+                    </FluentCard>
+                }
+            }
+            else if (_mockErrorMessage != null)
+            {
+                <FluentCard Style="padding: 1rem; background: var(--error-fill-rest, #f8d7da);">
+                    <FluentBadge Appearance="Appearance.Neutral">❌ Erro</FluentBadge>
+                    <FluentLabel Style="margin-top: 0.5rem; color: var(--error-foreground, #721c24); font-weight: 600;">@_mockErrorMessage</FluentLabel>
+                </FluentCard>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseMockWhatsAppDialog">
+            Fechar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      @onclick="SendMockWhatsAppMessage"
+                      Disabled="@(_isMockLoading || string.IsNullOrWhiteSpace(_mockPhoneNumber) || string.IsNullOrWhiteSpace(_mockText))">
+            @if (_isMockLoading)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px;" />
+                <span style="margin-left: 0.5rem;">Enviando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Send)" Slot="start" Color="Color.Fill" />
+                <span>Enviar Mock</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- ========================= -->
+<!-- Dialog 2: API Health      -->
+<!-- ========================= -->
+<FluentDialog Modal="true" Hidden="@(!_showApiHealthDialog)" TrapFocus="true"
+              @ondialogdismiss="CloseApiHealthDialog"
+              Style="width: 560px;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.ArrowSync)" />
+                <FluentLabel Typo="Typography.Subject">Status da API e Banco de Dados</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseApiHealthDialog" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0;">
+            @if (_isHealthLoading)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentProgressRing Style="width: 20px; height: 20px;" />
+                    <FluentLabel>Verificando status da API...</FluentLabel>
+                </FluentStack>
+            }
+            else if (_healthResult != null)
+            {
+                <!-- Health Check Result -->
+                <FluentCard Style="padding: 1rem;">
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                            @if (_healthResult.IsOnline)
+                            {
+                                <FluentBadge Appearance="Appearance.Accent">✅ API Online</FluentBadge>
+                            }
+                            else
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral" Style="background: var(--error-fill-rest);">❌ API Offline</FluentBadge>
+                            }
+                            <FluentLabel Style="color: var(--neutral-foreground-hint);">HTTP @_healthResult.HttpStatusCode — @_healthResult.ResponseTimeMs ms</FluentLabel>
+                        </FluentStack>
+
+                        @if (!string.IsNullOrEmpty(_healthResult.HealthJson))
+                        {
+                            <FluentLabel Style="font-weight: 600; margin-top: 0.5rem;">/health</FluentLabel>
+                            <pre style="font-size: 0.78rem; background: var(--neutral-fill-layer-rest); padding: 0.75rem; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">@_healthResult.HealthJson</pre>
+                        }
+                    </FluentStack>
+                </FluentCard>
+
+                @if (_systemInfoResult != null)
+                {
+                    <FluentCard Style="padding: 1rem;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                            <FluentLabel Style="font-weight: 600;">/system/info</FluentLabel>
+                            @if (_systemInfoResult.IsOnline)
+                            {
+                                <FluentBadge Appearance="Appearance.Accent">✅ Disponível — @_systemInfoResult.ResponseTimeMs ms</FluentBadge>
+                            }
+                            else
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral" Style="background: var(--error-fill-rest);">❌ Indisponível — HTTP @_systemInfoResult.HttpStatusCode</FluentBadge>
+                            }
+                            @if (!string.IsNullOrEmpty(_systemInfoResult.InfoJson))
+                            {
+                                <pre style="font-size: 0.78rem; background: var(--neutral-fill-layer-rest); padding: 0.75rem; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">@_systemInfoResult.InfoJson</pre>
+                            }
+                        </FluentStack>
+                    </FluentCard>
+                }
+            }
+            else if (_healthErrorMessage != null)
+            {
+                <FluentCard Style="padding: 1rem; background: var(--error-fill-rest, #f8d7da);">
+                    <FluentBadge Appearance="Appearance.Neutral">❌ Erro ao consultar</FluentBadge>
+                    <FluentLabel Style="margin-top: 0.5rem; color: var(--neutral-foreground-rest);">@_healthErrorMessage</FluentLabel>
+                </FluentCard>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseApiHealthDialog">
+            Fechar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="LoadApiHealth" Disabled="@_isHealthLoading">
+            @if (_isHealthLoading)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px;" />
+                <span style="margin-left: 0.5rem;">Verificando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.ArrowClockwise)" Slot="start" Color="Color.Fill" />
+                <span>Testar novamente</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- =========================== -->
+<!-- Dialog 3: Queue Stats       -->
+<!-- =========================== -->
+<FluentDialog Modal="true" Hidden="@(!_showQueueStatsDialog)" TrapFocus="true"
+              @ondialogdismiss="CloseQueueStatsDialog"
+              Style="width: 480px;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.ArrowSort)" />
+                <FluentLabel Typo="Typography.Subject">Fila de Mensagens (Redis)</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseQueueStatsDialog" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0;">
+            @if (_isQueueLoading)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentProgressRing Style="width: 20px; height: 20px;" />
+                    <FluentLabel>Consultando filas Redis...</FluentLabel>
+                </FluentStack>
+            }
+            else if (_queueStats != null)
+            {
+                <FluentCard Style="padding: 1rem;">
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                        <FluentBadge Appearance="Appearance.Accent">✅ Redis Disponível</FluentBadge>
+
+                        @foreach (var (name, count) in GetQueueItems())
+                        {
+                            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                                         HorizontalGap="12" Style="justify-content: space-between;">
+                                <FluentLabel>@name</FluentLabel>
+                                @if (count > 50)
+                                {
+                                    <FluentBadge Appearance="Appearance.Accent" Style="background: var(--error-fill-rest);">@count itens</FluentBadge>
+                                }
+                                else if (count > 10)
+                                {
+                                    <FluentBadge Appearance="Appearance.Neutral" Style="background: var(--warning-fill-rest);">@count itens</FluentBadge>
+                                }
+                                else
+                                {
+                                    <FluentBadge Appearance="Appearance.Accent">@count itens</FluentBadge>
+                                }
+                            </FluentStack>
+                        }
+
+                        <FluentLabel Style="font-size: 0.8rem; color: var(--neutral-foreground-hint); margin-top: 0.5rem;">
+                            Consultado em: @_queueStats.Timestamp.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")
+                        </FluentLabel>
+                    </FluentStack>
+                </FluentCard>
+            }
+            else if (_queueErrorMessage != null)
+            {
+                <FluentCard Style="padding: 1rem; background: var(--error-fill-rest, #f8d7da);">
+                    <FluentBadge Appearance="Appearance.Neutral">❌ Redis Indisponível ou Erro</FluentBadge>
+                    <FluentLabel Style="margin-top: 0.5rem; color: var(--neutral-foreground-rest);">@_queueErrorMessage</FluentLabel>
+                </FluentCard>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseQueueStatsDialog">
+            Fechar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="LoadQueueStats" Disabled="@_isQueueLoading">
+            @if (_isQueueLoading)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px;" />
+                <span style="margin-left: 0.5rem;">Atualizando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.ArrowClockwise)" Slot="start" Color="Color.Fill" />
+                <span>Atualizar</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- ============================= -->
+<!-- Dialog 4: Dashboard Stats     -->
+<!-- ============================= -->
+<FluentDialog Modal="true" Hidden="@(!_showDashboardStatsDialog)" TrapFocus="true"
+              @ondialogdismiss="CloseDashboardStatsDialog"
+              Style="width: 520px;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.DataBarVertical)" />
+                <FluentLabel Typo="Typography.Subject">Dashboard Stats (Administrador)</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseDashboardStatsDialog" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0;">
+            @if (_isDashboardLoading)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentProgressRing Style="width: 20px; height: 20px;" />
+                    <FluentLabel>Carregando estatísticas...</FluentLabel>
+                </FluentStack>
+            }
+            else if (_dashboardStats != null)
+            {
+                <FluentBadge Appearance="Appearance.Accent" Style="margin-bottom: 0.5rem;">✅ Dados retornados com sucesso</FluentBadge>
+                <FluentGrid Spacing="3">
+                    <FluentGridItem xs="12" sm="6">
+                        <FluentCard Style="padding: 1rem; text-align: center;">
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="4" HorizontalAlignment="HorizontalAlignment.Center">
+                                <FluentIcon Icon="@(Icons.Regular.Size24.People)" Color="Color.Accent" />
+                                <FluentLabel Typo="Typography.Subject">@(_dashboardStats.TotalAtendentes?.ToString() ?? "—")</FluentLabel>
+                                <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Total Atendentes</FluentLabel>
+                            </FluentStack>
+                        </FluentCard>
+                    </FluentGridItem>
+                    <FluentGridItem xs="12" sm="6">
+                        <FluentCard Style="padding: 1rem; text-align: center;">
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="4" HorizontalAlignment="HorizontalAlignment.Center">
+                                <FluentIcon Icon="@(Icons.Regular.Size24.PeopleCommunity)" Color="Color.Accent" />
+                                <FluentLabel Typo="Typography.Subject">@(_dashboardStats.TotalClientes?.ToString() ?? "—")</FluentLabel>
+                                <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Total Clientes</FluentLabel>
+                            </FluentStack>
+                        </FluentCard>
+                    </FluentGridItem>
+                    <FluentGridItem xs="12" sm="6">
+                        <FluentCard Style="padding: 1rem; text-align: center;">
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="4" HorizontalAlignment="HorizontalAlignment.Center">
+                                <FluentIcon Icon="@(Icons.Regular.Size24.CalendarCheckmark)" Color="Color.Accent" />
+                                <FluentLabel Typo="Typography.Subject">@(_dashboardStats.AtendimentosHoje?.ToString() ?? "—")</FluentLabel>
+                                <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Atendimentos Hoje</FluentLabel>
+                            </FluentStack>
+                        </FluentCard>
+                    </FluentGridItem>
+                    <FluentGridItem xs="12" sm="6">
+                        <FluentCard Style="padding: 1rem; text-align: center;">
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="4" HorizontalAlignment="HorizontalAlignment.Center">
+                                <FluentIcon Icon="@(Icons.Regular.Size24.PersonClock)" Color="Color.Accent" />
+                                <FluentLabel Typo="Typography.Subject">@(_dashboardStats.AtendimentosEmAndamento?.ToString() ?? "—")</FluentLabel>
+                                <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Em Andamento</FluentLabel>
+                            </FluentStack>
+                        </FluentCard>
+                    </FluentGridItem>
+                </FluentGrid>
+            }
+            else if (_dashboardErrorMessage != null)
+            {
+                <FluentCard Style="padding: 1rem; background: var(--error-fill-rest, #f8d7da);">
+                    <FluentBadge Appearance="Appearance.Neutral">❌ Erro ao carregar estatísticas</FluentBadge>
+                    <FluentLabel Style="margin-top: 0.5rem; color: var(--neutral-foreground-rest);">@_dashboardErrorMessage</FluentLabel>
+                </FluentCard>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseDashboardStatsDialog">
+            Fechar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="LoadDashboardStats" Disabled="@_isDashboardLoading">
+            @if (_isDashboardLoading)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px;" />
+                <span style="margin-left: 0.5rem;">Carregando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.ArrowClockwise)" Slot="start" Color="Color.Fill" />
+                <span>Atualizar</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- ================================== -->
+<!-- Dialog 5: Mock Instagram Message  -->
+<!-- ================================== -->
+<FluentDialog Modal="true" Hidden="@(!_showMockInstagramDialog)" TrapFocus="true"
+              @ondialogdismiss="CloseMockInstagramDialog"
+              Style="width: 520px;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Camera)" />
+                <FluentLabel Typo="Typography.Subject">Testar Envio de Mensagem Mock Instagram</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseMockInstagramDialog" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0;">
+            <div>
+                <FluentTextField @bind-Value="_mockInstagramFrom"
+                                Label="Instagram ID (From)"
+                                Placeholder="mock-ig-user-123"
+                                Style="width: 100%;"
+                                Autocomplete="off" />
+            </div>
+            @if (CurrentUser?.IsAdministrador == false)
+            {
+                <FluentTextField @bind-Value="_mockInstagramFarmaciaIdStr"
+                                Label="FarmaciaId"
+                                Placeholder="1"
+                                Style="width: 100%;"
+                                Autocomplete="off" />
+            }
+            <FluentTextField @bind-Value="_mockInstagramText"
+                             Label="Texto da mensagem"
+                             Placeholder="Olá, preciso renovar minha receita"
+                             Style="width: 100%;"
+                             Autocomplete="off" />
+
+            @if (_isMockInstagramLoading)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentProgressRing Style="width: 20px; height: 20px;" />
+                    <FluentLabel>Enviando mensagem mock...</FluentLabel>
+                </FluentStack>
+            }
+            else if (_mockInstagramResult != null)
+            {
+                @if (_mockInstagramResult.Success)
+                {
+                    <FluentCard Style="padding: 1rem;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                            <FluentBadge Appearance="Appearance.Accent">✅ Mensagem simulada com sucesso</FluentBadge>
+                            <FluentLabel>Atendimento ID: <strong>@_mockInstagramResult.AtendimentoId</strong></FluentLabel>
+                            <FluentLabel>Novo Atendimento: <strong>@(_mockInstagramResult.NovoAtendimento ? "Sim" : "Não")</strong></FluentLabel>
+                            <FluentLabel>Status: <strong>@_mockInstagramResult.Status</strong></FluentLabel>
+                        </FluentStack>
+                    </FluentCard>
+                }
+                else
+                {
+                    <FluentCard Style="padding: 1rem; background: var(--error-fill-rest, #f8d7da);">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                            <FluentBadge Appearance="Appearance.Neutral">❌ Erro ao enviar mensagem</FluentBadge>
+                            <FluentLabel Style="margin-top: 0.5rem; color: var(--error-foreground, #721c24); font-weight: 600;">@_mockInstagramResult.ErrorMessage</FluentLabel>
+
+                            @if (_mockInstagramResult.Details != null)
+                            {
+                                <FluentDivider Style="margin: 0.5rem 0;"/>
+                                <FluentLabel Typo="Typography.Body" Style="color: var(--error-foreground, #721c24); font-weight: 600;">Detalhes do Erro:</FluentLabel>
+
+                                @if (!string.IsNullOrEmpty(_mockInstagramResult.Details.InnerException))
+                                {
+                                    <FluentLabel Style="color: var(--error-foreground, #721c24); font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; word-break: break-word;">
+                                        <strong>Inner Exception:</strong> @_mockInstagramResult.Details.InnerException
+                                    </FluentLabel>
+                                }
+
+                                @if (_mockInstagramResult.Details.StackTrace != null && _mockInstagramResult.Details.StackTrace.Length > 0)
+                                {
+                                    <FluentLabel Style="color: var(--error-foreground, #721c24); font-weight: 600; margin-top: 0.5rem;">Stack Trace (primeiras linhas):</FluentLabel>
+                                    <FluentLabel Style="color: var(--error-foreground, #721c24); font-family: monospace; font-size: 0.75rem; white-space: pre-wrap; word-break: break-word;">
+                                        @string.Join("\n", _mockInstagramResult.Details.StackTrace.Take(3))
+                                    </FluentLabel>
+                                }
+                            }
+                        </FluentStack>
+                    </FluentCard>
+                }
+            }
+            else if (_mockInstagramErrorMessage != null)
+            {
+                <FluentCard Style="padding: 1rem; background: var(--error-fill-rest, #f8d7da);">
+                    <FluentBadge Appearance="Appearance.Neutral">❌ Erro</FluentBadge>
+                    <FluentLabel Style="margin-top: 0.5rem; color: var(--error-foreground, #721c24); font-weight: 600;">@_mockInstagramErrorMessage</FluentLabel>
+                </FluentCard>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseMockInstagramDialog">
+            Fechar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      @onclick="SendMockInstagramMessage"
+                      Disabled="@(_isMockInstagramLoading || string.IsNullOrWhiteSpace(_mockInstagramFrom) || string.IsNullOrWhiteSpace(_mockInstagramText))">
+            @if (_isMockInstagramLoading)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px;" />
+                <span style="margin-left: 0.5rem;">Enviando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Send)" Slot="start" Color="Color.Fill" />
+                <span>Enviar Mock</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- ================================== -->
+<!-- Dialog 6: Evolution API Test       -->
+<!-- ================================== -->
+<FluentDialog Modal="true" Hidden="@(!_showEvolutionDialog)" TrapFocus="true"
+              @ondialogdismiss="CloseEvolutionDialog"
+              Style="width: 540px;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.PlugConnected)" />
+                <FluentLabel Typo="Typography.Subject">Testar Conexão com Evolution API</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseEvolutionDialog" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0;">
+
+            @* Channel selector *@
+            <div Style="overflow: visible; position: relative; z-index: 30;">
+                @if (_isLoadingEvolutionChannels)
+                {
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentProgressRing Style="width: 16px; height: 16px;" />
+                        <FluentLabel>Carregando canais...</FluentLabel>
+                    </FluentStack>
+                }
+                else if (!_whatsappNaoOficialChannels.Any())
+                {
+                    <FluentMessageBar Intent="@MessageIntent.Warning">
+                        Nenhum canal WhatsApp Não Oficial configurado e ativo. Configure um canal em
+                        <a href="/channels" @onclick="CloseEvolutionDialog">Canais de Integração</a> primeiro.
+                    </FluentMessageBar>
+                }
+                else
+                {
+                    <FluentSelect TOption="string"
+                                  Label="Instância (Canal WhatsApp Não Oficial)"
+                                  Value="@(_selectedEvolutionChannelId?.ToString() ?? "")"
+                                  ValueChanged="OnEvolutionChannelChanged"
+                                  Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                        @if (_whatsappNaoOficialChannels.Count > 1)
+                        {
+                            <FluentOption Value="">Selecione uma instância...</FluentOption>
+                        }
+                        @foreach (var ch in _whatsappNaoOficialChannels)
+                        {
+                            <FluentOption Value="@ch.Id.ToString()">@ch.Name</FluentOption>
+                        }
+                    </FluentSelect>
+                }
+            </div>
+
+            @if (_selectedEvolutionChannelId.HasValue && !string.IsNullOrWhiteSpace(_evolutionInstanceName))
+            {
+                <FluentLabel Typo="Typography.Body">
+                    Instância: <strong>@_evolutionInstanceName</strong>
+                </FluentLabel>
+            }
+
+            <FluentTextField Value="@_evolutionApiKey"
+                             Label="API Key (oculta)"
+                             TextFieldType="TextFieldType.Password"
+                             ReadOnly="true"
+                             Style="width: 100%;"
+                             Autocomplete="off" />
+
+            <div>
+                <FluentLabel Style="display: block; margin-bottom: 4px;">Número de destino</FluentLabel>
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Bottom">
+                    <FluentTextField Value="+55"
+                                     ReadOnly="true"
+                                     Style="width: 64px; flex-shrink: 0;"
+                                     Autocomplete="off" />
+                    <FluentTextField Value="@_evolutionDestinationPhone"
+                                     ValueChanged="OnEvolutionDestinationChanged"
+                                     Immediate="true"
+                                     Placeholder="(62) 99880-8389"
+                                     MaxLength="16"
+                                     Style="flex: 1;"
+                                     Autocomplete="off" />
+                </FluentStack>
+                <FluentLabel Style="display: block; margin-top: 4px; font-size: 0.8rem; color: var(--neutral-foreground-hint);">
+                    Ex.: (62) 99880-8389 será enviado como 5562998808389.
+                </FluentLabel>
+                @if (!string.IsNullOrWhiteSpace(_evolutionDestinationError))
+                {
+                    <FluentLabel Style="display: block; margin-top: 4px; font-size: 0.8rem; color: var(--error-foreground);">
+                        @_evolutionDestinationError
+                    </FluentLabel>
+                }
+            </div>
+
+            <FluentTextField @bind-Value="_evolutionTextToSend"
+                             Label="Texto para envio"
+                             Placeholder="Mensagem de teste"
+                             Style="width: 100%;"
+                             Autocomplete="off" />
+
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                <FluentLabel>Foto para envio</FluentLabel>
+                <InputFile OnChange="HandleEvolutionPhotoSelected" accept="image/*" />
+                @if (!string.IsNullOrWhiteSpace(_evolutionPhotoFileName))
+                {
+                    <FluentLabel Typo="Typography.Body">Arquivo selecionado: @_evolutionPhotoFileName</FluentLabel>
+                }
+            </FluentStack>
+
+            @if (_isEvolutionLoading)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentProgressRing Style="width: 20px; height: 20px;" />
+                    <FluentLabel>Testando conexão com a Evolution API...</FluentLabel>
+                </FluentStack>
+            }
+            else if (_evolutionResult != null)
+            {
+                @if (_evolutionSuccess)
+                {
+                    <FluentCard Style="padding: 1rem;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                            <FluentBadge Appearance="Appearance.Accent">✅ Conexão estabelecida com sucesso!</FluentBadge>
+                            <FluentLabel Style="color: var(--neutral-foreground-rest); white-space: pre-wrap; word-break: break-word;">@_evolutionResult</FluentLabel>
+                        </FluentStack>
+                    </FluentCard>
+                }
+                else
+                {
+                    <FluentCard Style="padding: 1rem; background: var(--error-fill-rest, #f8d7da);">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                            <FluentBadge Appearance="Appearance.Neutral">❌ Falha na conexão</FluentBadge>
+                            <FluentLabel Style="color: var(--error-foreground, #721c24); font-weight: 600; white-space: pre-wrap; word-break: break-word;">@_evolutionResult</FluentLabel>
+                        </FluentStack>
+                    </FluentCard>
+                }
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseEvolutionDialog">
+            Fechar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      @onclick="SendEvolutionText"
+                      Disabled="@(_isEvolutionLoading || !_selectedEvolutionChannelId.HasValue || string.IsNullOrWhiteSpace(_evolutionTextToSend) || string.IsNullOrWhiteSpace(_evolutionDestinationPhone) || !_evolutionDestinationPhone.IsValidTelefone())">
+            <FluentIcon Icon="@(Icons.Regular.Size16.Send)" Slot="start" Color="Color.Fill" />
+            <span>Enviar texto</span>
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      @onclick="SendEvolutionPhoto"
+                      Disabled="@(_isEvolutionLoading || !_selectedEvolutionChannelId.HasValue || _evolutionPhotoFile is null || string.IsNullOrWhiteSpace(_evolutionDestinationPhone) || !_evolutionDestinationPhone.IsValidTelefone())">
+            <FluentIcon Icon="@(Icons.Regular.Size16.Image)" Slot="start" Color="Color.Fill" />
+            <span>Enviar foto</span>
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      @onclick="TestEvolutionConnection"
+                      Disabled="@(_isEvolutionLoading || string.IsNullOrWhiteSpace(_evolutionUrl) || string.IsNullOrWhiteSpace(_evolutionApiKey))">
+            @if (_isEvolutionLoading)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px;" />
+                <span style="margin-left: 0.5rem;">Testando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.PlugConnected)" Slot="start" Color="Color.Fill" />
+                <span>Testar Conexão</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    private bool _isLoading = true;
+    private bool _disposed = false;
+    private UserInfo? CurrentUser { get; set; }
+    
+    private const int ErrorToastTimeout = 8000; // 8 segundos
+    private const string EvolutionDefaultInstanceName = "farmacia01";
+    private const string EvolutionDefaultPhoneDigits = "62998808389"; // sem prefixo 55 (campo +55 é separado na UI)
+    private const string EvolutionDefaultImageMimeType = "image/jpeg";
+
+    // ── Dialog 1: Mock WhatsApp ──
+    private bool _showMockWhatsAppDialog = false;
+    private bool _isMockLoading = false;
+    private string _mockPhoneNumber = "(62) 99123-6501";
+    private string _mockFarmaciaIdStr = "1";
+    private string _mockText = "teste";
+    private bool _mockIsGroup;
+    private MockWhatsAppResult? _mockResult;
+    private string? _mockErrorMessage;
+
+    // ── Dialog 5: Mock Instagram ──
+    private bool _showMockInstagramDialog = false;
+    private bool _isMockInstagramLoading = false;
+    private string _mockInstagramFrom = "mock-ig-user-123";
+    private string _mockInstagramFarmaciaIdStr = "1";
+    private string _mockInstagramText = "teste";
+    private MockWhatsAppResult? _mockInstagramResult;
+    private string? _mockInstagramErrorMessage;
+
+    // ── Dialog 2: API Health ──
+    private bool _showApiHealthDialog = false;
+    private bool _isHealthLoading = false;
+    private ApiEndpointResult? _healthResult;
+    private ApiEndpointResult? _systemInfoResult;
+    private string? _healthErrorMessage;
+
+    // ── Dialog 3: Queue Stats ──
+    private bool _showQueueStatsDialog = false;
+    private bool _isQueueLoading = false;
+    private QueueStats? _queueStats;
+    private string? _queueErrorMessage;
+
+    // ── Dialog 4: Dashboard Stats ──
+    private bool _showDashboardStatsDialog = false;
+    private bool _isDashboardLoading = false;
+    private DashboardStats? _dashboardStats;
+    private string? _dashboardErrorMessage;
+
+    // ── Dialog 6: Evolution API ──
+    private bool _showEvolutionDialog = false;
+    private bool _isEvolutionLoading = false;
+    private bool _isLoadingEvolutionChannels = false;
+    private List<ChannelListItem> _whatsappNaoOficialChannels = new();
+    private int? _selectedEvolutionChannelId;
+    private string _evolutionUrl = "";
+    private string _evolutionApiKey = "";
+    private string _evolutionInstanceName = EvolutionDefaultInstanceName;
+    private string _evolutionDestinationPhone = EvolutionDefaultPhoneDigits;
+    private string? _evolutionDestinationError;
+    private string _evolutionTextToSend = "Mensagem de teste";
+    private IBrowserFile? _evolutionPhotoFile;
+    private string? _evolutionPhotoFileName;
+    private string? _evolutionResult;
+    private bool _evolutionSuccess = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            CurrentUser = await AuthService.GetUserInfo();
+            if (CurrentUser == null)
+            {
+                Navigation.NavigateTo("/login");
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading user info on Tests page");
+        }
+        finally
+        {
+            _isLoading = false;
+            if (!_disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    // ══════════════════════════════
+    // Dialog 1 — Mock WhatsApp
+    // ══════════════════════════════
+
+    private void OpenMockWhatsAppDialog()
+    {
+        _mockResult = null;
+        _mockErrorMessage = null;
+        if (CurrentUser?.IsAdministrador == true && !string.IsNullOrEmpty(CurrentUser.FarmaciaId))
+            _mockFarmaciaIdStr = CurrentUser.FarmaciaId;
+        _showMockWhatsAppDialog = true;
+    }
+
+    private void CloseMockWhatsAppDialog()
+    {
+        _showMockWhatsAppDialog = false;
+        _mockResult = null;
+        _mockErrorMessage = null;
+    }
+
+    private async Task SendMockWhatsAppMessage()
+    {
+        if (_isMockLoading) return;
+        _mockResult = null;
+        _mockErrorMessage = null;
+
+        if (!int.TryParse(_mockFarmaciaIdStr, out int farmaciaId))
+        {
+            _mockErrorMessage = "FarmaciaId deve ser um número inteiro válido.";
+            return;
+        }
+
+        var phoneDigits = new string(_mockPhoneNumber.Where(char.IsDigit).ToArray());
+        if (phoneDigits.Length < 10)
+        {
+            _mockErrorMessage = "Informe um número de telefone válido com DDD.";
+            return;
+        }
+        var fromNumber = "55" + phoneDigits;
+
+        _isMockLoading = true;
+        if (!_disposed) StateHasChanged();
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("PharmazapApi");
+            var token = AuthService.CurrentUser?.Token;
+            if (!string.IsNullOrEmpty(token))
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var payload = new
+            {
+                FarmaciaId = farmaciaId,
+                From = fromNumber,
+                Text = _mockText.Trim(),
+                IsGroup = _mockIsGroup
+            };
+            var json = JsonSerializer.Serialize(payload);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await client.PostAsync("api/whatsapp/mock/mensagem", content);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(responseBody);
+                var root = doc.RootElement;
+                _mockResult = new MockWhatsAppResult
+                {
+                    Success = root.TryGetProperty("success", out var s) && s.GetBoolean(),
+                    AtendimentoId = root.TryGetProperty("atendimentoId", out var aid) ? aid.GetInt32() : 0,
+                    NovoAtendimento = root.TryGetProperty("novoAtendimento", out var na) && na.GetBoolean(),
+                    Status = root.TryGetProperty("status", out var st) ? st.GetString() ?? "" : ""
+                };
+            }
+            else
+            {
+                string errorMsg = "Erro desconhecido.";
+                ErrorDetails? details = null;
+                try
+                {
+                    using var doc = JsonDocument.Parse(responseBody);
+                    if (doc.RootElement.TryGetProperty("error", out var err))
+                        errorMsg = err.GetString() ?? errorMsg;
+                    else if (doc.RootElement.TryGetProperty("message", out var msg))
+                        errorMsg = msg.GetString() ?? errorMsg;
+                    
+                    // Capturar detalhes do erro se disponíveis
+                    if (doc.RootElement.TryGetProperty("details", out var detailsObj))
+                    {
+                        details = new ErrorDetails
+                        {
+                            Message = detailsObj.TryGetProperty("message", out var m) ? m.GetString() : null,
+                            InnerException = detailsObj.TryGetProperty("innerException", out var ie) ? ie.GetString() : null,
+                            StackTrace = detailsObj.TryGetProperty("stackTrace", out var st) && st.ValueKind == JsonValueKind.Array
+                                ? st.EnumerateArray().Select(x => x.GetString() ?? "").ToArray()
+                                : null
+                        };
+                    }
+                }
+                catch { }
+                _mockResult = new MockWhatsAppResult
+                {
+                    Success = false,
+                    ErrorMessage = $"HTTP {(int)response.StatusCode}: {errorMsg}",
+                    Details = details
+                };
+                
+                // Exibir toast de erro
+                ToastService.ShowError(errorMsg);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error calling mock WhatsApp endpoint");
+            _mockErrorMessage = $"Exceção: {ex.Message}";
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            _isMockLoading = false;
+            if (!_disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    // ══════════════════════════════
+    // Dialog 2 — API Health
+    // ══════════════════════════════
+
+    private async Task OpenApiHealthDialog()
+    {
+        _healthResult = null;
+        _systemInfoResult = null;
+        _healthErrorMessage = null;
+        _showApiHealthDialog = true;
+        await LoadApiHealth();
+    }
+
+    private void CloseApiHealthDialog()
+    {
+        _showApiHealthDialog = false;
+        _healthResult = null;
+        _systemInfoResult = null;
+        _healthErrorMessage = null;
+    }
+
+    private async Task LoadApiHealth()
+    {
+        if (_isHealthLoading) return;
+        _isHealthLoading = true;
+        _healthResult = null;
+        _systemInfoResult = null;
+        _healthErrorMessage = null;
+        if (!_disposed) StateHasChanged();
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("PharmazapApi");
+
+            // GET /health
+            var swHealth = Stopwatch.StartNew();
+            try
+            {
+                var healthResponse = await client.GetAsync("health");
+                swHealth.Stop();
+                var healthBody = await healthResponse.Content.ReadAsStringAsync();
+                string prettyJson = TryPrettyPrintJson(healthBody);
+                _healthResult = new ApiEndpointResult
+                {
+                    IsOnline = healthResponse.IsSuccessStatusCode,
+                    HttpStatusCode = (int)healthResponse.StatusCode,
+                    ResponseTimeMs = (int)swHealth.ElapsedMilliseconds,
+                    HealthJson = prettyJson
+                };
+            }
+            catch (Exception ex)
+            {
+                swHealth.Stop();
+                _healthResult = new ApiEndpointResult
+                {
+                    IsOnline = false,
+                    HttpStatusCode = 0,
+                    ResponseTimeMs = (int)swHealth.ElapsedMilliseconds,
+                    HealthJson = null
+                };
+                Logger.LogWarning(ex, "Error calling /health endpoint");
+            }
+
+            // GET /system/info
+            var swInfo = Stopwatch.StartNew();
+            try
+            {
+                var infoResponse = await client.GetAsync("system/info");
+                swInfo.Stop();
+                var infoBody = await infoResponse.Content.ReadAsStringAsync();
+                string prettyJson = TryPrettyPrintJson(infoBody);
+                _systemInfoResult = new ApiEndpointResult
+                {
+                    IsOnline = infoResponse.IsSuccessStatusCode,
+                    HttpStatusCode = (int)infoResponse.StatusCode,
+                    ResponseTimeMs = (int)swInfo.ElapsedMilliseconds,
+                    InfoJson = prettyJson
+                };
+            }
+            catch (Exception ex)
+            {
+                swInfo.Stop();
+                _systemInfoResult = new ApiEndpointResult
+                {
+                    IsOnline = false,
+                    HttpStatusCode = 0,
+                    ResponseTimeMs = (int)swInfo.ElapsedMilliseconds,
+                    InfoJson = null
+                };
+                Logger.LogWarning(ex, "Error calling /system/info endpoint");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected error loading API health");
+            _healthErrorMessage = $"Erro inesperado: {ex.Message}";
+        }
+        finally
+        {
+            _isHealthLoading = false;
+            if (!_disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    // ══════════════════════════════
+    // Dialog 3 — Queue Stats
+    // ══════════════════════════════
+
+    private async Task OpenQueueStatsDialog()
+    {
+        _queueStats = null;
+        _queueErrorMessage = null;
+        _showQueueStatsDialog = true;
+        await LoadQueueStats();
+    }
+
+    private void CloseQueueStatsDialog()
+    {
+        _showQueueStatsDialog = false;
+        _queueStats = null;
+        _queueErrorMessage = null;
+    }
+
+    private async Task LoadQueueStats()
+    {
+        if (_isQueueLoading) return;
+        _isQueueLoading = true;
+        _queueStats = null;
+        _queueErrorMessage = null;
+        if (!_disposed) StateHasChanged();
+
+        try
+        {
+            _queueStats = await PharmazapApiService.GetQueueStatsAsync();
+            if (_queueStats == null)
+                _queueErrorMessage = "Não foi possível obter as estatísticas das filas. Verifique se o Redis está disponível.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading queue stats");
+            _queueErrorMessage = $"Erro ao consultar filas: {ex.Message}";
+        }
+        finally
+        {
+            _isQueueLoading = false;
+            if (!_disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private IEnumerable<(string Name, long Count)> GetQueueItems()
+    {
+        if (_queueStats == null) yield break;
+        yield return ("NovasMensagens", _queueStats.NovasMensagens);
+        yield return ("Notificações", _queueStats.Notificacoes);
+        yield return ("Agendamentos", _queueStats.Agendamentos);
+    }
+
+    // ══════════════════════════════
+    // Dialog 4 — Dashboard Stats
+    // ══════════════════════════════
+
+    private async Task OpenDashboardStatsDialog()
+    {
+        _dashboardStats = null;
+        _dashboardErrorMessage = null;
+        _showDashboardStatsDialog = true;
+        await LoadDashboardStats();
+    }
+
+    private void CloseDashboardStatsDialog()
+    {
+        _showDashboardStatsDialog = false;
+        _dashboardStats = null;
+        _dashboardErrorMessage = null;
+    }
+
+    private async Task LoadDashboardStats()
+    {
+        if (_isDashboardLoading) return;
+        _isDashboardLoading = true;
+        _dashboardStats = null;
+        _dashboardErrorMessage = null;
+        if (!_disposed) StateHasChanged();
+
+        try
+        {
+            _dashboardStats = await PharmazapApiService.GetDashboardStatsAsync();
+            if (_dashboardStats == null)
+                _dashboardErrorMessage = "Não foi possível obter as estatísticas do dashboard. Verifique se o usuário está autenticado.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading dashboard stats on tests page");
+            _dashboardErrorMessage = $"Erro ao carregar: {ex.Message}";
+        }
+        finally
+        {
+            _isDashboardLoading = false;
+            if (!_disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    // ══════════════════════════════
+    // Dialog 5 — Mock Instagram
+    // ══════════════════════════════
+
+    private void OpenMockInstagramDialog()
+    {
+        _mockInstagramResult = null;
+        _mockInstagramErrorMessage = null;
+        if (CurrentUser?.IsAdministrador == true && !string.IsNullOrEmpty(CurrentUser.FarmaciaId))
+            _mockInstagramFarmaciaIdStr = CurrentUser.FarmaciaId;
+        _showMockInstagramDialog = true;
+    }
+
+    private void CloseMockInstagramDialog()
+    {
+        _showMockInstagramDialog = false;
+        _mockInstagramResult = null;
+        _mockInstagramErrorMessage = null;
+    }
+
+    private async Task SendMockInstagramMessage()
+    {
+        if (_isMockInstagramLoading) return;
+        _mockInstagramResult = null;
+        _mockInstagramErrorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_mockInstagramFrom))
+        {
+            _mockInstagramErrorMessage = "Informe o Instagram ID (From).";
+            return;
+        }
+
+        if (!int.TryParse(_mockInstagramFarmaciaIdStr, out int farmaciaId))
+        {
+            _mockInstagramErrorMessage = "FarmaciaId deve ser um número inteiro válido.";
+            return;
+        }
+
+        _isMockInstagramLoading = true;
+        if (!_disposed) StateHasChanged();
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("PharmazapApi");
+            var token = AuthService.CurrentUser?.Token;
+            if (!string.IsNullOrEmpty(token))
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var payload = new
+            {
+                FarmaciaId = farmaciaId,
+                From = _mockInstagramFrom.Trim(),
+                Text = _mockInstagramText.Trim()
+            };
+            var json = JsonSerializer.Serialize(payload);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var response = await client.PostAsync("api/instagram/mock/mensagem", content);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                using var doc = JsonDocument.Parse(responseBody);
+                var root = doc.RootElement;
+                _mockInstagramResult = new MockWhatsAppResult
+                {
+                    Success = root.TryGetProperty("success", out var s) && s.GetBoolean(),
+                    AtendimentoId = root.TryGetProperty("atendimentoId", out var aid) ? aid.GetInt32() : 0,
+                    NovoAtendimento = root.TryGetProperty("novoAtendimento", out var na) && na.GetBoolean(),
+                    Status = root.TryGetProperty("status", out var st) ? st.GetString() ?? "" : ""
+                };
+            }
+            else
+            {
+                string errorMsg = "Erro desconhecido.";
+                ErrorDetails? details = null;
+                try
+                {
+                    using var doc = JsonDocument.Parse(responseBody);
+                    if (doc.RootElement.TryGetProperty("error", out var err))
+                        errorMsg = err.GetString() ?? errorMsg;
+                    else if (doc.RootElement.TryGetProperty("message", out var msg))
+                        errorMsg = msg.GetString() ?? errorMsg;
+
+                    if (doc.RootElement.TryGetProperty("details", out var detailsObj))
+                    {
+                        details = new ErrorDetails
+                        {
+                            Message = detailsObj.TryGetProperty("message", out var m) ? m.GetString() : null,
+                            InnerException = detailsObj.TryGetProperty("innerException", out var ie) ? ie.GetString() : null,
+                            StackTrace = detailsObj.TryGetProperty("stackTrace", out var st) && st.ValueKind == JsonValueKind.Array
+                                ? st.EnumerateArray().Select(x => x.GetString() ?? "").ToArray()
+                                : null
+                        };
+                    }
+                }
+                catch { }
+                _mockInstagramResult = new MockWhatsAppResult
+                {
+                    Success = false,
+                    ErrorMessage = $"HTTP {(int)response.StatusCode}: {errorMsg}",
+                    Details = details
+                };
+
+                ToastService.ShowError(errorMsg);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error calling mock Instagram endpoint");
+            _mockInstagramErrorMessage = $"Exceção: {ex.Message}";
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            _isMockInstagramLoading = false;
+            if (!_disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    // ══════════════════════════════
+    // Helpers
+    // ══════════════════════════════
+
+    // ══════════════════════════════
+    // Dialog 6 — Evolution API
+    // ══════════════════════════════
+
+    private async Task OpenEvolutionDialog()
+    {
+        _evolutionResult = null;
+        _evolutionSuccess = false;
+        _evolutionDestinationPhone = EvolutionDefaultPhoneDigits.MaskTelefoneInput();
+        ValidateEvolutionDestinationPhone();
+        _selectedEvolutionChannelId = null;
+        _evolutionUrl = "";
+        _evolutionApiKey = "";
+        _evolutionInstanceName = EvolutionDefaultInstanceName;
+        _whatsappNaoOficialChannels = new();
+        _showEvolutionDialog = true;
+        await LoadEvolutionChannelsAsync();
+    }
+
+    private void CloseEvolutionDialog()
+    {
+        _showEvolutionDialog = false;
+        _evolutionResult = null;
+        _evolutionSuccess = false;
+        _evolutionPhotoFile = null;
+        _evolutionPhotoFileName = null;
+        _whatsappNaoOficialChannels = new();
+        _selectedEvolutionChannelId = null;
+    }
+
+    private void OnEvolutionDestinationChanged(string? value)
+    {
+        _evolutionDestinationPhone = (value ?? string.Empty).MaskTelefoneInput();
+        ValidateEvolutionDestinationPhone();
+    }
+
+    private bool ValidateEvolutionDestinationPhone()
+    {
+        if (string.IsNullOrWhiteSpace(_evolutionDestinationPhone))
+        {
+            _evolutionDestinationError = "Informe um número com DDD.";
+            return false;
+        }
+
+        if (!_evolutionDestinationPhone.IsValidTelefone())
+        {
+            _evolutionDestinationError = "Informe um número válido com DDD, como (62) 99880-8389.";
+            return false;
+        }
+
+        _evolutionDestinationError = null;
+        return true;
+    }
+
+    private void HandleEvolutionPhotoSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null || string.IsNullOrWhiteSpace(file.ContentType) || !file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            _evolutionPhotoFile = null;
+            _evolutionPhotoFileName = null;
+            ToastService.ShowError("Selecione um arquivo de imagem válido.");
+            return;
+        }
+
+        _evolutionPhotoFile = file;
+        _evolutionPhotoFileName = _evolutionPhotoFile.Name;
+    }
+
+    private async Task SendEvolutionText()
+    {
+        if (_isEvolutionLoading) return;
+
+        _evolutionResult = null;
+        _evolutionSuccess = false;
+        _isEvolutionLoading = true;
+        if (!_disposed) StateHasChanged();
+
+        try
+        {
+            if (!ValidateEvolutionDestinationPhone())
+            {
+                ToastService.ShowError(_evolutionDestinationError ?? "Informe um número válido com DDD.");
+                return;
+            }
+
+            var client = HttpClientFactory.CreateClient("PharmazapApi");
+            var token = AuthService.CurrentUser?.Token;
+            if (!string.IsNullOrEmpty(token))
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var to = _evolutionDestinationPhone.SanitizeDigits(11);
+            var payload = new
+            {
+                To = to,
+                Text = _evolutionTextToSend.Trim()
+            };
+
+            var response = await client.PostAsJsonAsync("api/whatsapp/send/text", payload);
+            var body = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                _evolutionSuccess = true;
+                _evolutionResult = $"Texto enviado para 55{to} com sucesso.\n\n{TryPrettyPrintJson(body)}";
+                ToastService.ShowSuccess("Texto enviado com sucesso.");
+            }
+            else
+            {
+                _evolutionSuccess = false;
+                _evolutionResult = $"Falha ao enviar texto.\nHTTP {(int)response.StatusCode} {response.ReasonPhrase}\n\n{body}";
+                ToastService.ShowError("Falha ao enviar texto.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error sending text message from Tests page");
+            _evolutionSuccess = false;
+            _evolutionResult = $"Erro ao enviar texto: {ex.Message}";
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            _isEvolutionLoading = false;
+            if (!_disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SendEvolutionPhoto()
+    {
+        if (_isEvolutionLoading || _evolutionPhotoFile is null) return;
+
+        _evolutionResult = null;
+        _evolutionSuccess = false;
+        _isEvolutionLoading = true;
+        if (!_disposed) StateHasChanged();
+
+        try
+        {
+            if (!ValidateEvolutionDestinationPhone())
+            {
+                ToastService.ShowError(_evolutionDestinationError ?? "Informe um número válido com DDD.");
+                return;
+            }
+
+            var client = HttpClientFactory.CreateClient("PharmazapApi");
+            var token = AuthService.CurrentUser?.Token;
+            if (!string.IsNullOrEmpty(token))
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var to = _evolutionDestinationPhone.SanitizeDigits(11);
+            await using var stream = _evolutionPhotoFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            using var streamContent = new StreamContent(stream);
+            var contentType = string.IsNullOrWhiteSpace(_evolutionPhotoFile.ContentType)
+                ? EvolutionDefaultImageMimeType
+                : _evolutionPhotoFile.ContentType;
+            streamContent.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(to), "To");
+            form.Add(new StringContent("image"), "MediaType");
+            var caption = _evolutionTextToSend.Trim();
+            if (!string.IsNullOrWhiteSpace(caption))
+                form.Add(new StringContent(caption), "Caption");
+            form.Add(streamContent, "MediaFile", _evolutionPhotoFile.Name);
+
+            var response = await client.PostAsync("api/whatsapp/send/media", form);
+            var body = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                _evolutionSuccess = true;
+                _evolutionResult = $"Foto enviada para 55{to} com sucesso.\n\n{TryPrettyPrintJson(body)}";
+                ToastService.ShowSuccess("Foto enviada com sucesso.");
+            }
+            else
+            {
+                _evolutionSuccess = false;
+                _evolutionResult = $"Falha ao enviar foto.\nHTTP {(int)response.StatusCode} {response.ReasonPhrase}\n\n{body}";
+                ToastService.ShowError("Falha ao enviar foto.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error sending photo message from Tests page");
+            _evolutionSuccess = false;
+            _evolutionResult = $"Erro ao enviar foto: {ex.Message}";
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            _isEvolutionLoading = false;
+            if (!_disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task TestEvolutionConnection()
+    {
+        if (_isEvolutionLoading) return;
+        _evolutionResult = null;
+        _evolutionSuccess = false;
+        _isEvolutionLoading = true;
+        if (!_disposed) StateHasChanged();
+
+        try
+        {
+            using var client = HttpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Add("apikey", _evolutionApiKey.Trim());
+            client.Timeout = TimeSpan.FromSeconds(15);
+
+            var url = _evolutionUrl.TrimEnd('/') + "/instance/fetchInstances";
+            var response = await client.GetAsync(url);
+            var body = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                _evolutionSuccess = true;
+                var prettyBody = TryPrettyPrintJson(body);
+                _evolutionResult = $"HTTP {(int)response.StatusCode} — A Evolution API respondeu com sucesso.\n\n{prettyBody}";
+                ToastService.ShowSuccess("Evolution API online!");
+            }
+            else
+            {
+                _evolutionSuccess = false;
+                _evolutionResult = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}\n\n{body}";
+                ToastService.ShowError($"Falha: HTTP {(int)response.StatusCode}");
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            _evolutionSuccess = false;
+            _evolutionResult = "Tempo limite excedido (15 s). Verifique se a URL está correta e acessível.";
+            ToastService.ShowError("Timeout ao conectar à Evolution API.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error testing Evolution API connection");
+            _evolutionSuccess = false;
+            _evolutionResult = $"Erro: {ex.Message}";
+            ToastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            _isEvolutionLoading = false;
+            if (!_disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task LoadEvolutionChannelsAsync()
+    {
+        _isLoadingEvolutionChannels = true;
+        if (!_disposed) StateHasChanged();
+        try
+        {
+            var (success, channels, _) = await ChannelService.GetChannelsAsync();
+            if (success)
+            {
+                _whatsappNaoOficialChannels = channels
+                    .Where(c => c.Type == (int)ChannelType.WhatsApp && !c.IsOfficial && c.Configured)
+                    .ToList();
+
+                // Auto-select when only one channel available
+                if (_whatsappNaoOficialChannels.Count == 1)
+                {
+                    var only = _whatsappNaoOficialChannels.Single();
+                    _selectedEvolutionChannelId = only.Id;
+                    await LoadEvolutionDefaultsFromChannelAsync(only.Id);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not load WhatsApp Non-Official channels.");
+        }
+        finally
+        {
+            _isLoadingEvolutionChannels = false;
+            if (!_disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task OnEvolutionChannelChanged(string? value)
+    {
+        _evolutionUrl = "";
+        _evolutionApiKey = "";
+        _evolutionInstanceName = EvolutionDefaultInstanceName;
+
+        if (int.TryParse(value, out var id))
+        {
+            _selectedEvolutionChannelId = id;
+            await LoadEvolutionDefaultsFromChannelAsync(id);
+        }
+        else
+        {
+            _selectedEvolutionChannelId = null;
+        }
+        if (!_disposed) StateHasChanged();
+    }
+
+    private async Task LoadEvolutionDefaultsFromChannelAsync(int channelId)
+    {
+        try
+        {
+            var (success, channel, message) = await ChannelService.GetChannelByIdAsync(channelId);
+            if (!success || channel == null)
+            {
+                if (!string.IsNullOrWhiteSpace(message))
+                    Logger.LogDebug("Evolution API channel load failed: {Message}", message);
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(channel.ApiUrl))
+                _evolutionUrl = channel.ApiUrl;
+
+            if (!string.IsNullOrWhiteSpace(channel.ApiKey))
+                _evolutionApiKey = channel.ApiKey;
+            else if (!string.IsNullOrWhiteSpace(Configuration["GLOBAL_API_KEY"]))
+                _evolutionApiKey = Configuration["GLOBAL_API_KEY"]!;
+
+            _evolutionInstanceName = (!string.IsNullOrWhiteSpace(channel.InstanceName) ? channel.InstanceName : null)
+                ?? (!string.IsNullOrWhiteSpace(channel.Name) ? channel.Name : null)
+                ?? EvolutionDefaultInstanceName;
+        }
+        catch (Exception ex)
+        {
+            var farmaciaId = CurrentUser?.FarmaciaId ?? "unknown";
+            Logger.LogWarning(ex, "Could not load Evolution API configuration for channel {ChannelId}, FarmaciaId {FarmaciaId}.", channelId, farmaciaId);
+        }
+    }
+
+    private static string TryPrettyPrintJson(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return json;
+        try
+        {
+            var doc = JsonDocument.Parse(json);
+            return JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return json;
+        }
+    }
+
+    // ── Inner result models ──
+
+    private class MockWhatsAppResult
+    {
+        public bool Success { get; set; }
+        public int AtendimentoId { get; set; }
+        public bool NovoAtendimento { get; set; }
+        public string Status { get; set; } = "";
+        public string? ErrorMessage { get; set; }
+        public ErrorDetails? Details { get; set; }
+    }
+
+    private class ErrorDetails
+    {
+        public string? Message { get; set; }
+        public string? InnerException { get; set; }
+        public string[]? StackTrace { get; set; }
+    }
+
+    private class ApiEndpointResult
+    {
+        public bool IsOnline { get; set; }
+        public int HttpStatusCode { get; set; }
+        public int ResponseTimeMs { get; set; }
+        public string? HealthJson { get; set; }
+        public string? InfoJson { get; set; }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+    }
+}

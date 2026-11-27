@@ -1,0 +1,226 @@
+@page "/channels/create"
+@page "/channels/edit/{ChannelId:int}"
+@page "/channels/edit/{ChannelType}/{ChannelIsOfficial}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Desenvolvedor}")]
+
+@inject IAuthService AuthService
+@inject IChannelService ChannelService
+@inject IToastService ToastService
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+
+<PageTitle>@(_isEditMode ? "Editar Canal" : "Criar Canal") - Pharmazap Plus</PageTitle>
+
+<div style="display:flex; flex-direction:column; gap: 1rem; padding: 1.5rem; height: 100%; background: var(--neutral-layer-1);">
+    <FluentCard Style="padding: 1rem 1.5rem; position: relative; z-index: 1; background: var(--neutral-layer-1);">
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center" Style="flex: 1;">
+                <FluentIcon Icon="@(Icons.Regular.Size20.Link)" Color="Color.Accent" />
+                <FluentLabel Typo="Typography.PageTitle">@(_isEditMode ? "Editar Canal" : "Cadastro de Canal")</FluentLabel>
+            </FluentStack>
+            @if (_isEditMode)
+            {
+                <FluentButton Appearance="Appearance.Outline"
+                              @onclick="NavigateToList">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.ArrowLeft)" Slot="start" />
+                    Voltar à lista
+                </FluentButton>
+            }
+            else
+            {
+                <FluentButton Appearance="Appearance.Outline"
+                              @onclick="GoBackAsync">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.ArrowLeft)" Slot="start" />
+                    Voltar
+                </FluentButton>
+            }
+            <FluentButton Appearance="Appearance.Neutral"
+                          @onclick="NavigateToList">
+                Cancelar
+            </FluentButton>
+        </FluentStack>
+        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">
+            Configure credenciais de integração WhatsApp/Instagram para a farmácia.
+        </FluentLabel>
+    </FluentCard>
+
+    @if (_loadingChannel)
+    {
+        <FluentCard Style="padding: 2rem;">
+            <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                         VerticalAlignment="VerticalAlignment.Center" VerticalGap="12">
+                <FluentProgressRing />
+                <FluentLabel>Carregando dados do canal...</FluentLabel>
+            </FluentStack>
+        </FluentCard>
+    }
+    else
+    {
+        <ChannelForm @key="_channelFormKey"
+                     Model="@_model"
+                     IsSubmitting="@_saving"
+                     OnValidSubmit="SaveAsync"
+                     ChannelService="@ChannelService"
+                     CurrentFarmaciaId="@_currentFarmaciaId"
+                     CurrentFarmaciaNome="@_currentFarmaciaNome"
+                     ChannelId="@_currentChannelId" />
+    }
+</div>
+
+@code {
+    [Parameter] public int? ChannelId { get; set; }
+    [Parameter] public string? ChannelType { get; set; }
+    [Parameter] public string? ChannelIsOfficial { get; set; }
+    [SupplyParameterFromQuery(Name = "type")] public int? QueryType { get; set; }
+    [SupplyParameterFromQuery(Name = "official")] public bool? QueryIsOfficial { get; set; }
+    [SupplyParameterFromQuery(Name = "name")] public string? QueryName { get; set; }
+    [SupplyParameterFromQuery(Name = "instanceName")] public string? QueryInstanceName { get; set; }
+
+    private int? _currentChannelId;
+    private int? _currentType;
+    private bool? _currentIsOfficial;
+
+    private ChannelCreateRequest _model = new();
+    private bool _saving;
+    private bool _isEditMode;
+    private bool _loadingChannel;
+    private string? _currentFarmaciaId;
+    private string? _currentFarmaciaNome;
+    private int _channelFormKey;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var currentUser = AuthService.CurrentUser ?? await AuthService.GetUserInfo();
+        _currentFarmaciaId = currentUser?.FarmaciaId;
+        _currentFarmaciaNome = currentUser?.FarmaciaNome;
+
+        _currentChannelId = ChannelId;
+        _currentType = int.TryParse(ChannelType, out var routeType) ? routeType : QueryType;
+        _currentIsOfficial = bool.TryParse(ChannelIsOfficial, out var routeOfficial) ? routeOfficial : QueryIsOfficial;
+        _isEditMode = _currentChannelId.HasValue || (_currentType.HasValue && _currentIsOfficial.HasValue);
+
+        if (!_isEditMode)
+        {
+            _model = new ChannelCreateRequest();
+            return;
+        }
+
+        _loadingChannel = true;
+        try
+        {
+            var (success, channel, message) = _currentChannelId.HasValue
+                ? await ChannelService.GetChannelByIdAsync(_currentChannelId.Value)
+                : await ChannelService.GetChannelAsync(_currentType!.Value, _currentIsOfficial!.Value);
+
+            if (success && channel != null)
+            {
+                _currentType ??= channel.Type;
+                _currentIsOfficial ??= channel.IsOfficial;
+                _model = new ChannelCreateRequest
+                {
+                    Name = channel.Name,
+                    Type = (PharmazapPlus.Web.Services.ChannelType)channel.Type,
+                    IsOfficial = channel.IsOfficial,
+                    AccessToken = channel.AccessToken,
+                    PhoneNumberId = channel.PhoneNumberId,
+                    BusinessAccountId = channel.BusinessAccountId,
+                    InstagramBusinessId = channel.InstagramBusinessId,
+                    // Compatibilidade temporária com canais Instagram antigos que ainda salvavam no campo InstagramBusinessId.
+                    InstagramUsername = channel.InstagramUsername ?? channel.InstagramBusinessId,
+                    ApiUrl = channel.ApiUrl,
+                    ApiKey = channel.ApiKey,
+                    InstanceName = channel.InstanceName,
+                    MetaAppMode = channel.MetaAppMode,
+                    HasPersistedApiKey = channel.HasPersistedApiKey,
+                    HasStoredInstagramPassword = channel.HasInstagramPassword
+                };
+                _channelFormKey++;
+                return;
+            }
+
+            if (_currentChannelId.HasValue)
+            {
+                ToastService.ShowWarning("O canal solicitado não foi encontrado. Cadastre-o antes de tentar editá-lo.");
+                NavigateToList();
+                return;
+            }
+
+            _model = new ChannelCreateRequest
+            {
+                Type = _currentType.HasValue ? (PharmazapPlus.Web.Services.ChannelType)_currentType.Value : PharmazapPlus.Web.Services.ChannelType.WhatsApp,
+                IsOfficial = _currentIsOfficial ?? true,
+                Name = QueryName ?? GetDefaultChannelName(_currentType ?? (int)PharmazapPlus.Web.Services.ChannelType.WhatsApp, _currentIsOfficial ?? true),
+                InstanceName = QueryInstanceName,
+                HasPersistedApiKey = _currentType == (int)PharmazapPlus.Web.Services.ChannelType.WhatsApp && _currentIsOfficial == false
+            };
+            _channelFormKey++;
+            ToastService.ShowWarning($"Não foi possível carregar todos os detalhes do canal. {message}");
+        }
+        finally
+        {
+            _loadingChannel = false;
+        }
+    }
+
+    private async Task SaveAsync(ChannelCreateRequest request)
+    {
+        if (_saving) return;
+
+        _saving = true;
+        try
+        {
+            if (_isEditMode)
+            {
+                var (success, message) = _currentChannelId.HasValue
+                    ? await ChannelService.UpdateChannelByIdAsync(_currentChannelId.Value, request)
+                    : await ChannelService.UpdateChannelAsync(_currentType!.Value, _currentIsOfficial!.Value, request);
+                if (success)
+                {
+                    ToastService.ShowSuccess(message);
+                    Navigation.NavigateTo("/channels");
+                }
+                else
+                {
+                    ToastService.ShowError(message);
+                }
+            }
+            else
+            {
+                var (success, message) = await ChannelService.CreateChannelAsync(request);
+                if (success)
+                {
+                    ToastService.ShowSuccess(message);
+                    _model = new ChannelCreateRequest();
+                    Navigation.NavigateTo("/channels");
+                }
+                else
+                {
+                    ToastService.ShowError(message);
+                }
+            }
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private static string GetDefaultChannelName(int type, bool isOfficial)
+    {
+        if (type == 2)
+            return "Instagram";
+
+        return isOfficial ? "WhatsApp Oficial" : "WhatsApp Não Oficial";
+    }
+
+    private void NavigateToList()
+    {
+        Navigation.NavigateTo("/channels");
+    }
+
+    private async Task GoBackAsync()
+    {
+        await JSRuntime.InvokeVoidAsync("history.back");
+    }
+}

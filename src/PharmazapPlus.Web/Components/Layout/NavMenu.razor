@@ -1,0 +1,229 @@
+﻿@inject IAuthService AuthService
+@inject PortfolioMode PortfolioMode
+@implements IDisposable
+
+<div class="navmenu">
+    <input type="checkbox" title="Menu expand/collapse toggle" id="navmenu-toggle" class="navmenu-icon" />
+    <label for="navmenu-toggle" class="navmenu-icon">
+        <FluentIcon Value="@(new Icons.Regular.Size20.Navigation())" Color="Color.Fill" />
+    </label>
+    <nav class="sitenav" aria-labelledby="main-menu">
+        <FluentNavMenu Id="main-menu" Collapsible="true" Width="250" Title="Navigation menu" @bind-Expanded="expanded" CustomToggle="true">
+
+            <AuthorizeView>
+                <Authorized>
+                    <!-- User Info Section -->
+                    <div class="user-info-section">
+                        <div class="user-info-inner" title="@($"{context.User.Identity?.Name} — {GetRoleName(context.User)}")">
+                            @if (!string.IsNullOrWhiteSpace(AuthService.CurrentUser?.FarmaciaLogoUrl))
+                            {
+                                <img src="@GetFarmaciaLogoUrl(AuthService.CurrentUser.FarmaciaLogoUrl)"
+                                     alt="Logo da farmácia"
+                                     style="max-width: 100%; max-height: 36px; width: auto; height: auto; object-fit: contain; border-radius: 4px;"
+                                     onerror="this.style.display='none'; var fb=this.nextElementSibling; if(fb) fb.style.display='flex';" />
+                                <div style="width: 36px; height: 36px; border-radius: 4px; background: var(--neutral-fill-layer-rest); display:none; align-items:center; justify-content:center; font-size: 8px; padding: 4px; text-align: center; overflow: hidden;">
+                                    Sua Logomarca
+                                </div>
+                            }
+                            else
+                            {
+                                <div style="width: 36px; height: 36px; border-radius: 4px; background: var(--neutral-fill-layer-rest); display:flex; align-items:center; justify-content:center; font-size: 8px; padding: 4px; text-align: center; overflow: hidden;">
+                                    Sua Logomarca
+                                </div>
+                            }
+                            <div class="user-info-text">
+                                <div class="user-info-name">@context.User.Identity?.Name</div>
+                                <div class="user-info-role">@GetRoleName(context.User)</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Main Navigation -->
+                    <FluentNavLink Href="/dashboard" Match="NavLinkMatch.All" Icon="@(new Icons.Regular.Size20.Home())" IconColor="Color.Accent">
+                        Dashboard
+                    </FluentNavLink>
+
+                    <FluentNavLink Href="/messages" Icon="@(new Icons.Regular.Size20.Chat())" IconColor="Color.Accent">
+                        Mensagens
+                    </FluentNavLink>
+
+                    <!-- Administrador Only -->
+                    <AuthorizeView Roles="@UserRoles.Administrador" Context="adminCtx">
+                        <Authorized>
+                            <FluentNavLink Href="/atendentes" Icon="@(new Icons.Regular.Size20.People())" IconColor="Color.Accent">
+                                Atendentes
+                            </FluentNavLink>
+                            @if (PortfolioMode.RotaPermitida("/campanhas"))
+                            {
+                                <FluentNavLink Href="/campanhas" Icon="@(new Icons.Regular.Size20.Send())" IconColor="Color.Accent">
+                                    Campanhas
+                                </FluentNavLink>
+                            }
+                        </Authorized>
+                    </AuthorizeView>
+
+                    <!-- Gestor Only -->
+                    <AuthorizeView Roles="@UserRoles.Gestor" Context="gestorCtx">
+                        <Authorized>
+                            @if (PortfolioMode.RotaPermitida("/farmacias"))
+                            {
+                                <FluentNavLink Href="/farmacias" Icon="@(new Icons.Regular.Size20.Building())" IconColor="Color.Accent">
+                                    Farmácias
+                                </FluentNavLink>
+                            }
+                            @if (PortfolioMode.RotaPermitida("/administradores"))
+                            {
+                                <FluentNavLink Href="/administradores" Icon="@(new Icons.Regular.Size20.People())" IconColor="Color.Accent">
+                                    Administradores
+                                </FluentNavLink>
+                            }
+                            @if (PortfolioMode.RotaPermitida("/campanhas"))
+                            {
+                                <FluentNavLink Href="/campanhas" Icon="@(new Icons.Regular.Size20.Send())" IconColor="Color.Accent">
+                                    Campanhas
+                                </FluentNavLink>
+                            }
+                        </Authorized>
+                    </AuthorizeView>
+
+                    <!-- Administrador and Atendente -->
+                    <AuthorizeView Roles="@($"{UserRoles.Administrador},{UserRoles.Atendente}")" Context="atendenteCtx">
+                        <Authorized>
+                            <FluentNavLink Href="/clientes" Icon="@(new Icons.Regular.Size20.PeopleCommunity())" IconColor="Color.Accent">
+                                Clientes
+                            </FluentNavLink>
+                        </Authorized>
+                    </AuthorizeView>
+
+                    <!-- Gestor and Administrador and Atendente -->
+                    <FluentNavLink Href="/relatorios" Icon="@(new Icons.Regular.Size20.ChartMultiple())" IconColor="Color.Accent">
+                        Relatórios
+                    </FluentNavLink>
+
+                    <!-- Divider -->
+                    <div style="border-top: 1px solid var(--neutral-stroke-divider-rest); margin: 0.5rem 0;"></div>
+
+                    <FluentNavLink Href="/ajuda" Match="NavLinkMatch.All" Icon="@(new Icons.Regular.Size20.QuestionCircle())" IconColor="Color.Accent">
+                        Ajuda
+                    </FluentNavLink>
+
+                    <FluentNavLink Href="/termos-de-uso" Match="NavLinkMatch.All" Icon="@(new Icons.Regular.Size20.DocumentText())" IconColor="Color.Accent">
+                        Termos de Uso
+                    </FluentNavLink>
+
+                    <!-- Settings & Logout -->
+                    <FluentNavGroup Title="Configurações" Icon="@(new Icons.Regular.Size20.Settings())" IconColor="Color.Accent" Expanded="false">
+                        <FluentNavLink Href="/configuracoes" Icon="@(new Icons.Regular.Size20.Settings())" IconColor="Color.Accent">
+                            Configurações Gerais
+                        </FluentNavLink>
+                        <AuthorizeView Roles="@($"{UserRoles.Administrador},{UserRoles.Atendente}")" Context="configAdminCtx">
+                            <Authorized>
+                                <FluentNavLink Href="/etiquetas" Icon="@(new Icons.Regular.Size20.Tag())" IconColor="Color.Accent">
+                                    Etiquetas
+                                </FluentNavLink>
+                            </Authorized>
+                        </AuthorizeView>
+                        <AuthorizeView Roles="@UserRoles.Administrador" Context="configAdminOnlyCtx">
+                            <Authorized>
+                                <FluentNavLink Href="/departamentos" Icon="@(new Icons.Regular.Size20.Building())" IconColor="Color.Accent">
+                                    Departamentos
+                                </FluentNavLink>
+                                <FluentNavLink Href="/motivos-encerramento" Icon="@(new Icons.Regular.Size20.CallEnd())" IconColor="Color.Accent">
+                                    Motivos Encerramento
+                                </FluentNavLink>
+                                @if (PortfolioMode.RotaPermitida("/tests"))
+                                {
+                                    <FluentNavLink Href="/tests" Icon="@(new Icons.Regular.Size20.Beaker())" IconColor="Color.Accent">
+                                        Testes e Resultados
+                                    </FluentNavLink>
+                                }
+                            </Authorized>
+                        </AuthorizeView>
+                        <AuthorizeView Roles="@($"{UserRoles.Administrador},{UserRoles.Desenvolvedor}")" Context="configGestorCtx">
+                            <Authorized>
+                                @if (PortfolioMode.RotaPermitida("/channels"))
+                                {
+                                    <FluentNavLink Href="/channels" Icon="@(new Icons.Regular.Size20.Link())" IconColor="Color.Accent">
+                                        Canais
+                                    </FluentNavLink>
+                                }
+                                <FluentNavLink Href="/mensagens-pre-definidas" Icon="@(new Icons.Regular.Size20.ChatMultiple())" IconColor="Color.Accent">
+                                    Mensagens Pré-Definidas
+                                </FluentNavLink>
+                            </Authorized>
+                        </AuthorizeView>
+                    </FluentNavGroup>
+
+                    <FluentButton Appearance="Appearance.Stealth"
+                                  Class="logout-button"
+                                  @onclick="HandleLogout">
+                        <FluentIcon Value="@(new Icons.Regular.Size20.SignOut())" Slot="start" Color="Color.Error" />
+                        <span class="logout-label" style="margin-left: 0.5rem;">Fazer Logoff</span>
+                    </FluentButton>
+
+                    <FluentNavLink Href="/sobre" Match="NavLinkMatch.All" Icon="@(new Icons.Regular.Size20.Info())" IconColor="Color.Accent">
+                        Sobre
+                    </FluentNavLink>
+                </Authorized>
+                <NotAuthorized>
+                    <FluentNavLink Href="/login" Match="NavLinkMatch.All" Icon="@(new Icons.Regular.Size20.PersonKey())" IconColor="Color.Accent">
+                        Login
+                    </FluentNavLink>
+                </NotAuthorized>
+            </AuthorizeView>
+
+        </FluentNavMenu>
+    </nav>
+</div>
+
+@code {
+    private bool expanded = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // Subscribe before GetUserInfo so no logo-change event is missed.
+        AuthService.OnFarmaciaLogoUrlChanged += HandleLogoUrlChanged;
+
+        // Ensure CurrentUser (with FarmaciaLogoUrl) is loaded from localStorage
+        // so the logo renders even on a fresh circuit (page refresh / new tab).
+        await AuthService.GetUserInfo();
+
+        // Re-render so the logo is visible immediately after the circuit starts.
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        AuthService.OnFarmaciaLogoUrlChanged -= HandleLogoUrlChanged;
+    }
+
+    /// <summary>Called by AuthService when FarmaciaLogoUrl is updated (upload/removal).</summary>
+    private async void HandleLogoUrlChanged()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string GetRoleName(System.Security.Claims.ClaimsPrincipal user)
+    {
+        var role = user.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value;
+        return role == null ? "" : UserRoles.GetRoleDisplayName(role);
+    }
+
+    private async Task HandleLogout()
+    {
+        await AuthService.Logout();
+    }
+
+    private string GetFarmaciaLogoUrl(string? logoUrl)
+    {
+        if (string.IsNullOrWhiteSpace(logoUrl)) return "";
+        // Route through the Web-side proxy so the browser never needs to trust
+        // the API's dev certificate (fixes image loading on Linux/Fedora).
+        var pathPart = logoUrl.Split('?')[0];
+        var fileName = Path.GetFileName(pathPart);
+        return string.IsNullOrWhiteSpace(fileName) ? "" : $"/logo-proxy/{Uri.EscapeDataString(fileName)}";
+    }
+
+}

@@ -1,0 +1,384 @@
+@using System.Net.Http.Headers
+@using System.Text.Json
+@inject IAuthService AuthService
+@inject IHttpClientFactory HttpClientFactory
+@inject IChannelService ChannelService
+@inject ILogger<ChannelLogsPanel> Logger
+@inject IToastService ToastService
+@inject IJSRuntime JSRuntime
+
+<FluentCard Style="padding: 1.5rem; height: 100%; display: flex; flex-direction: column; gap: 1rem;">
+    <FluentStack Orientation="Orientation.Vertical" VerticalGap="8" Style="flex: 1;">
+        <FluentIcon Icon="@(Icons.Regular.Size32.Search)" Color="Color.Accent" />
+        <FluentLabel Typo="Typography.Subject" Style="font-weight: 600;">Logs do Cadastro de Canais</FluentLabel>
+        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); flex: 1;">
+            Mostra somente os logs dos canais realmente cadastrados: Instagram (Meta), WhatsApp (Meta), Meta/OAuth e Evolution.
+        </FluentLabel>
+    </FluentStack>
+    <FluentButton Appearance="Appearance.Accent" @onclick="OpenDialogAsync" Style="width: 100%; white-space: normal; height: auto; min-height: 2.25rem;">
+        <FluentIcon Icon="@(Icons.Regular.Size16.Search)" Slot="start" Color="Color.Fill" />
+        Ver logs dos canais cadastrados
+    </FluentButton>
+</FluentCard>
+
+<FluentDialog Modal="true" Hidden="@(!_showDialog)" TrapFocus="true" @ondialogdismiss="CloseDialog" Style="width: min(1000px, 96vw);">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Search)" />
+                <FluentLabel Typo="Typography.Subject">Logs do Cadastro de Canais</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto; display:flex; gap:4px;">
+                <FluentButton Appearance="Appearance.Stealth"
+                              @onclick="CopyLogsAsync"
+                              Disabled="@(_logs is null || string.IsNullOrWhiteSpace(_logs.Text))"
+                              aria-label="Copiar logs"
+                              Title="Copiar todo o conteúdo exibido">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Copy)" />
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseDialog" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0; overflow: visible; position: relative;">
+            @if (_isLoadingSources)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentProgressRing Style="width: 20px; height: 20px;" />
+                    <FluentLabel>Identificando canais cadastrados...</FluentLabel>
+                </FluentStack>
+            }
+            else if (!string.IsNullOrWhiteSpace(_loadError))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error" Style="width: 100%;">
+                    @_loadError
+                </FluentMessageBar>
+            }
+            else if (!_availableSources.Any())
+            {
+                <FluentMessageBar Intent="@MessageIntent.Warning" Style="width: 100%;">
+                    Nenhum canal compatível foi encontrado. Cadastre um canal para liberar o log correspondente.
+                </FluentMessageBar>
+            }
+            else
+            {
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                    <FluentLabel Typo="Typography.Body">Fontes disponíveis conforme os canais cadastrados:</FluentLabel>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                        @foreach (var source in _availableSources)
+                        {
+                            <FluentBadge Appearance="@(source.Key == _selectedSourceKey ? Appearance.Accent : Appearance.Neutral)">
+                                @source.Label
+                            </FluentBadge>
+                        }
+                    </div>
+                </FluentStack>
+
+                <FluentSelect TOption="string"
+                              Label="Fonte de log"
+                              Value="@_selectedSourceKey"
+                              ValueChanged="OnSourceChanged"
+                              Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                    @foreach (var source in _availableSources)
+                    {
+                        <FluentOption Value="@source.Key">@source.Label</FluentOption>
+                    }
+                </FluentSelect>
+
+                @if (!string.IsNullOrWhiteSpace(_selectedSourceDescription))
+                {
+                    <FluentMessageBar Intent="@MessageIntent.Info" Style="width: 100%;">
+                        @_selectedSourceDescription
+                    </FluentMessageBar>
+                }
+
+                @if (_isLoadingLogs)
+                {
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentProgressRing Style="width: 20px; height: 20px;" />
+                        <FluentLabel>Carregando logs da fonte selecionada...</FluentLabel>
+                    </FluentStack>
+                }
+                else if (!string.IsNullOrWhiteSpace(_logsError))
+                {
+                    <FluentMessageBar Intent="@MessageIntent.Error" Style="width: 100%;">
+                        @_logsError
+                    </FluentMessageBar>
+                }
+                else if (_logs is not null)
+                {
+                    <FluentCard Style="padding: 1rem; background: var(--neutral-layer-2);">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="flex-wrap: wrap;">
+                                <FluentBadge Appearance="Appearance.Accent">✅ @_logs.SourceLabel</FluentBadge>
+                                <FluentBadge Appearance="Appearance.Neutral">@_logs.TotalMatches linhas encontradas</FluentBadge>
+                                <FluentBadge Appearance="Appearance.Neutral">Arquivo: @_logs.FileName</FluentBadge>
+                            </FluentStack>
+                            <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.85rem;">
+                                Mostrando os últimos @_logs.Returned linhas compatíveis com a fonte selecionada.
+                            </FluentLabel>
+                            <pre style="margin: 0; max-height: 55vh; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 0.78rem; line-height: 1.45; background: var(--neutral-layer-1); padding: 0.9rem; border-radius: 8px; border: 1px solid var(--neutral-stroke-divider-rest);">@_logs.Text</pre>
+                        </FluentStack>
+                    </FluentCard>
+                }
+            }
+        </FluentStack>
+    </FluentDialogBody>
+
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseDialog">Fechar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ReloadLogsAsync" Disabled="@(_isLoadingSources || _isLoadingLogs || string.IsNullOrWhiteSpace(_selectedSourceKey))">
+            @if (_isLoadingLogs)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px;" />
+                <span style="margin-left: 0.5rem;">Atualizando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.ArrowClockwise)" Slot="start" Color="Color.Fill" />
+                <span>Atualizar</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    private bool _showDialog;
+    private bool _isLoadingSources;
+    private bool _isLoadingLogs;
+    private string? _loadError;
+    private string? _logsError;
+    private string _selectedSourceKey = string.Empty;
+    private string? _selectedSourceDescription;
+    private List<ChannelLogSource> _availableSources = new();
+    private ChannelLogsViewModel? _logs;
+
+    private async Task OpenDialogAsync()
+    {
+        _showDialog = true;
+        await LoadAvailableSourcesAsync();
+    }
+
+    private void CloseDialog()
+    {
+        _showDialog = false;
+        _loadError = null;
+        _logsError = null;
+        _selectedSourceDescription = null;
+        _logs = null;
+        _availableSources.Clear();
+        _selectedSourceKey = string.Empty;
+    }
+
+    private async Task LoadAvailableSourcesAsync()
+    {
+        if (_isLoadingSources)
+            return;
+
+        _isLoadingSources = true;
+        _loadError = null;
+        _logsError = null;
+        _logs = null;
+        StateHasChanged();
+
+        try
+        {
+            var channelsResult = await ChannelService.GetChannelsAsync();
+            if (!channelsResult.Success)
+            {
+                _loadError = channelsResult.Message;
+                return;
+            }
+
+            _availableSources = BuildSourcesFromChannels(channelsResult.Channels);
+            if (!_availableSources.Any())
+                return;
+
+            _selectedSourceKey = _availableSources.First().Key;
+            await LoadLogsAsync(_selectedSourceKey);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao carregar fontes de log de canais");
+            _loadError = "Não foi possível carregar as fontes de log.";
+        }
+        finally
+        {
+            _isLoadingSources = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OnSourceChanged(string? value)
+    {
+        _selectedSourceKey = value ?? string.Empty;
+        await LoadLogsAsync(_selectedSourceKey);
+    }
+
+    private async Task ReloadLogsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedSourceKey))
+            return;
+
+        await LoadLogsAsync(_selectedSourceKey);
+    }
+
+    private async Task CopyLogsAsync()
+    {
+        if (_logs is null || string.IsNullOrWhiteSpace(_logs.Text))
+            return;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("layoutInterop.copyToClipboard", _logs.Text);
+            ToastService.ShowSuccess("Logs copiados para a área de transferência.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao copiar logs de canais para a área de transferência");
+            ToastService.ShowError("Não foi possível copiar os logs para a área de transferência.");
+        }
+    }
+
+    private async Task LoadLogsAsync(string sourceKey)
+    {
+        if (string.IsNullOrWhiteSpace(sourceKey) || _isLoadingLogs)
+            return;
+
+        _isLoadingLogs = true;
+        _logsError = null;
+        _logs = null;
+        _selectedSourceDescription = _availableSources.FirstOrDefault(x => x.Key == sourceKey)?.Description;
+        StateHasChanged();
+
+        try
+        {
+            var client = HttpClientFactory.CreateClient("PharmazapApi");
+            var token = AuthService.CurrentUser?.Token;
+            if (!string.IsNullOrWhiteSpace(token))
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            var response = await client.GetAsync($"api/diagnostics/channel-logs?source={Uri.EscapeDataString(sourceKey)}&limit=200");
+            var rawBody = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                _logsError = $"HTTP {(int)response.StatusCode}: {ExtractError(rawBody)}";
+                return;
+            }
+
+            using var doc = JsonDocument.Parse(rawBody);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("success", out var successEl) && successEl.ValueKind == JsonValueKind.False)
+            {
+                _logsError = ExtractError(rawBody);
+                return;
+            }
+
+            var lines = root.TryGetProperty("lines", out var linesEl) && linesEl.ValueKind == JsonValueKind.Array
+                ? linesEl.EnumerateArray().Select(x => x.GetString() ?? string.Empty).ToList()
+                : new List<string>();
+
+            _logs = new ChannelLogsViewModel
+            {
+                Source = root.TryGetProperty("source", out var sourceEl) ? sourceEl.GetString() ?? sourceKey : sourceKey,
+                SourceLabel = _availableSources.FirstOrDefault(x => x.Key == sourceKey)?.Label ?? sourceKey,
+                FileName = root.TryGetProperty("fileName", out var fileEl) ? fileEl.GetString() ?? string.Empty : string.Empty,
+                TotalMatches = root.TryGetProperty("totalMatches", out var totalEl) && totalEl.TryGetInt32(out var total)
+                    ? total
+                    : lines.Count,
+                Returned = root.TryGetProperty("returned", out var returnedEl) && returnedEl.TryGetInt32(out var returned)
+                    ? returned
+                    : lines.Count,
+                Text = string.Join("\n", lines)
+            };
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao carregar logs de canais");
+            _logsError = "Não foi possível carregar os logs.";
+            ToastService.ShowError("Não foi possível carregar os logs.");
+        }
+        finally
+        {
+            _isLoadingLogs = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string ExtractError(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return "Sem detalhes.";
+
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("error", out var errorEl) && errorEl.ValueKind == JsonValueKind.String)
+                return errorEl.GetString() ?? "Sem detalhes.";
+        }
+        catch (JsonException)
+        {
+        }
+
+        return body.Length <= 300 ? body : body[..300] + "...";
+    }
+
+    private static List<ChannelLogSource> BuildSourcesFromChannels(List<ChannelListItem> channels)
+    {
+        var sources = new List<ChannelLogSource>();
+        var instagram = channels.Where(c => c.Type == (int)ChannelType.Instagram && c.Configured).Select(c => c.Name).ToList();
+        var whatsappOfficial = channels.Where(c => c.Type == (int)ChannelType.WhatsApp && c.IsOfficial && c.Configured).Select(c => c.Name).ToList();
+        var whatsappEvolution = channels.Where(c => c.Type == (int)ChannelType.WhatsApp && !c.IsOfficial && c.Configured).Select(c => c.Name).ToList();
+
+        if (instagram.Any())
+        {
+            sources.Add(new ChannelLogSource(
+                "instagram-meta",
+                "Instagram (Meta)",
+                $"Canais cadastrados: {string.Join(", ", instagram)}"));
+        }
+
+        if (whatsappOfficial.Any())
+        {
+            sources.Add(new ChannelLogSource(
+                "whatsapp-meta",
+                "WhatsApp (Meta)",
+                $"Canais cadastrados: {string.Join(", ", whatsappOfficial)}"));
+        }
+
+        if (instagram.Any() || whatsappOfficial.Any())
+        {
+            sources.Add(new ChannelLogSource(
+                "meta",
+                "Meta / OAuth",
+                "Logs do fluxo de autenticação e configuração Meta."));
+        }
+
+        if (whatsappEvolution.Any())
+        {
+            sources.Add(new ChannelLogSource(
+                "evolution",
+                "WhatsApp (Evolution)",
+                $"Canais cadastrados: {string.Join(", ", whatsappEvolution)}"));
+        }
+
+        return sources;
+    }
+
+    private sealed record ChannelLogSource(string Key, string Label, string Description);
+
+    private sealed class ChannelLogsViewModel
+    {
+        public string Source { get; set; } = string.Empty;
+        public string SourceLabel { get; set; } = string.Empty;
+        public string FileName { get; set; } = string.Empty;
+        public int TotalMatches { get; set; }
+        public int Returned { get; set; }
+        public string Text { get; set; } = string.Empty;
+    }
+}

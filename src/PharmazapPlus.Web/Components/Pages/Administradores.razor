@@ -1,0 +1,575 @@
+@page "/administradores"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = UserRoles.Gestor)]
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<Administradores> Logger
+@inject IPharmazapApiService PharmazapApiService
+@inject IToastService ToastService
+
+<PageTitle>Administradores - Pharmazap Plus</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" Style="height: 100%; overflow: hidden;">
+    @if (CurrentUser != null)
+    {
+        <div style="flex-shrink: 0; width: 100%;">
+            <FluentCard Style="padding: 1rem 2rem; border-radius: 0; width: 100%;">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="12" Style="flex: 1; min-width: 0;">
+                        <FluentIcon Icon="@(Icons.Regular.Size32.PeopleSettings)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="min-width: 0;">
+                            <FluentLabel Typo="Typography.PageTitle" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Gerenciamento de Administradores</FluentLabel>
+                            <FluentLabel Typo="Typography.Body">Gerencie os administradores do sistema</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="margin-left: auto; flex-shrink: 0; padding-left: 1rem; width: auto;">
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovoAdministrador">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.PersonAdd)" Slot="start" Color="Color.Fill" />
+                            Novo Administrador
+                        </FluentButton>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+        </div>
+
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 10; overflow: visible;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8"
+                             VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+                    <FluentTextField @bind-Value="@SearchQuery"
+                                    Placeholder="Buscar por nome ou email..."
+                                    Style="flex: 1;"
+                                    Autocomplete="off"
+                                    @onkeydown="HandleSearchKeyDown">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Search)" Slot="start" />
+                    </FluentTextField>
+
+                    <FluentSelect TOption="FilterStatusEnum"
+                                 @bind-SelectedOption="@FilterStatus"
+                                 Style="min-width: 180px; position: relative; z-index: 10; overflow: visible;">
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.All)">Todos</FluentOption>
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.Active)">Ativos</FluentOption>
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.Inactive)">Inativos</FluentOption>
+                    </FluentSelect>
+
+                    <FluentButton Appearance="Appearance.Outline" @onclick="ClearFilters">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" Slot="start" />
+                        Limpar
+                    </FluentButton>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="32" Wrap="true">
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.PeopleSettings)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--accent-fill-rest);">@TotalAdministradores</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Total de Administradores</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.PersonAvailable)" Color="Color.Success" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusSuccessForeground3);">@AdministradoresAtivos</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Ativos</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.PersonProhibited)" Color="Color.Warning" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusWarningForeground3);">@AdministradoresInativos</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Inativos</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                @if (IsLoading)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12" Style="padding: 3rem;">
+                        <FluentProgressRing />
+                        <FluentLabel>Carregando administradores...</FluentLabel>
+                    </FluentStack>
+                }
+                else if (!AdministradoresFiltrados.Any())
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12"
+                                 Style="padding: 4rem; text-align: center;">
+                        <FluentIcon Icon="@(Icons.Regular.Size48.People)" Style="color: var(--neutral-foreground-hint);" />
+                        @if (TotalAdministradores == 0)
+                        {
+                            <FluentLabel Typo="Typography.Subject">Nenhum administrador cadastrado</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Comece adicionando o primeiro administrador do sistema</FluentLabel>
+                            <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovoAdministrador">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.PersonAdd)" Slot="start" Color="Color.Fill" />
+                                Adicionar Primeiro Administrador
+                            </FluentButton>
+                        }
+                        else
+                        {
+                            <FluentLabel Typo="Typography.Subject">Nenhum administrador encontrado</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Nenhum resultado para os filtros aplicados. Tente ajustar a busca ou clique em Limpar.</FluentLabel>
+                        }
+                    </FluentStack>
+                }
+                else
+                {
+                    <FluentDataGrid Items="@AdministradoresFiltrados"
+                                   GridTemplateColumns="2fr 2fr 1fr 1fr 1fr 160px"
+                                   Style="width: 100%; overflow-x: auto;">
+
+                        <PropertyColumn Property="@(a => a.Nome)"
+                                      Title="Nome"
+                                      Sortable="true" />
+
+                        <PropertyColumn Property="@(a => a.Email)"
+                                      Title="Email"
+                                      Sortable="true" />
+
+                        <PropertyColumn Property="@(a => a.Telefone)"
+                                      Title="Telefone"
+                                      Sortable="true" />
+
+                        <TemplateColumn Title="Status">
+                            @if (context.Ativo)
+                            {
+                                <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@Consts.DesignTokens.SuccessBackground">Ativo</FluentBadge>
+                            }
+                            else
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral">Inativo</FluentBadge>
+                            }
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Data Cadastro">
+                            <FluentLabel>@context.DataCadastro.ToString("dd/MM/yyyy")</FluentLabel>
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Ações">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="4">
+                                <FluentButton Appearance="Appearance.Stealth"
+                                               Title="Editar"
+                                               @onclick="@(() => ShowEditAdministrador(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Edit)" />
+                                </FluentButton>
+                                <FluentButton Appearance="Appearance.Stealth"
+                                               Title="Redefinir Senha"
+                                               @onclick="@(() => ShowResetSenha(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Password)" />
+                                </FluentButton>
+                                @if (context.Ativo)
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                   Title="Inativar"
+                                                   @onclick="@(() => ConfirmInativar(context))">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.PersonProhibited)" />
+                                    </FluentButton>
+                                }
+                                else
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                   Title="Ativar"
+                                                   @onclick="@(() => ConfirmAtivar(context))">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.PersonAvailable)" />
+                                    </FluentButton>
+                                }
+                            </FluentStack>
+                        </TemplateColumn>
+                    </FluentDataGrid>
+                }
+            </FluentCard>
+        </div>
+    }
+    else
+    {
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;">
+            <FluentProgressRing />
+            <FluentLabel>Carregando...</FluentLabel>
+        </div>
+    }
+</FluentStack>
+
+<!-- Confirmation Dialog for Inativar/Ativar -->
+<FluentDialog @ref="_confirmDialog" Modal="true" Hidden="@(!_showConfirmDialog)" TrapFocus="true"
+              @ondialogdismiss="CancelConfirm">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                     HorizontalGap="8" Style="width:100%">
+            <FluentLabel Typo="Typography.Subject">@_confirmTitle</FluentLabel>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CancelConfirm"
+                              aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentLabel>@_confirmMessage</FluentLabel>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CancelConfirm">Cancelar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ExecuteConfirm">Confirmar</FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Reset Senha Dialog -->
+<FluentDialog Modal="true" Hidden="@(!_showResetSenhaDialog)" TrapFocus="true"
+              @ondialogdismiss="CancelResetSenha">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                     HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Password)" />
+                <FluentLabel Typo="Typography.Subject">Redefinir Senha — @_resetSenhaNome</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CancelResetSenha"
+                              aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0;">
+            <FluentTextField @bind-Value="@_resetSenhaNova"
+                             Label="Nova Senha *"
+                             Placeholder="Mínimo 6 caracteres"
+                             Style="width: 100%;"
+                             Autocomplete="new-password"
+                             TextFieldType="TextFieldType.Password" />
+            <FluentTextField @bind-Value="@_resetSenhaConfirm"
+                             Label="Confirmar Nova Senha *"
+                             Placeholder="Repita a nova senha"
+                             Style="width: 100%;"
+                             Autocomplete="new-password"
+                             TextFieldType="TextFieldType.Password" />
+            @if (!string.IsNullOrEmpty(_resetSenhaError))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_resetSenhaError</FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CancelResetSenha" Disabled="@_isResettingSenha">Cancelar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ExecuteResetSenha" Disabled="@_isResettingSenha">
+            @if (_isResettingSenha)
+            {
+                <FluentProgressRing Style="width:16px; height:16px;" />
+                <span style="margin-left:0.5rem;">Salvando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Password)" Slot="start" Color="Color.Fill" />
+                <span>Redefinir Senha</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Form Dialog for Create/Edit -->
+<AdministradorFormDialog Visible="@_showFormDialog"
+                         VisibleChanged="@OnFormDialogVisibleChanged"
+                         Administrador="@_editingAdministrador"
+                         OnSave="@HandleFormSave" />
+
+@code {
+    private UserInfo? CurrentUser { get; set; }
+    private List<AdministradorDto> AdministradoresList { get; set; } = new();
+
+    private IQueryable<AdministradorDto> AdministradoresFiltrados
+    {
+        get
+        {
+            var filtered = AdministradoresList.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                filtered = filtered.Where(a =>
+                    (a.Nome?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (a.Email?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            filtered = FilterStatus switch
+            {
+                FilterStatusEnum.Active => filtered.Where(a => a.Ativo),
+                FilterStatusEnum.Inactive => filtered.Where(a => !a.Ativo),
+                _ => filtered
+            };
+
+            return filtered.AsQueryable();
+        }
+    }
+
+    private string SearchQuery { get; set; } = string.Empty;
+    private FilterStatusEnum FilterStatus { get; set; } = FilterStatusEnum.All;
+    private bool IsLoading { get; set; } = true;
+
+    private int TotalAdministradores => AdministradoresList.Count;
+    private int AdministradoresAtivos => AdministradoresList.Count(a => a.Ativo);
+    private int AdministradoresInativos => AdministradoresList.Count(a => !a.Ativo);
+
+    // Form dialog
+    private bool _showFormDialog = false;
+    private AdministradorDto? _editingAdministrador = null;
+
+    // Confirmation dialog
+    private FluentDialog? _confirmDialog;
+    private bool _showConfirmDialog = false;
+    private string _confirmTitle = "";
+    private string _confirmMessage = "";
+    private Func<Task>? _confirmAction;
+
+    // Reset senha dialog
+    private bool _showResetSenhaDialog = false;
+    private AdministradorDto? _resetSenhaAdministrador = null;
+    private string _resetSenhaNome = "";
+    private string _resetSenhaNova = "";
+    private string _resetSenhaConfirm = "";
+    private string _resetSenhaError = "";
+    private bool _isResettingSenha = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            SearchQuery = string.Empty;
+            FilterStatus = FilterStatusEnum.All;
+            await InvokeAsync(StateHasChanged);
+
+            CurrentUser = await AuthService.GetUserInfo();
+            if (CurrentUser == null)
+            {
+                Navigation.NavigateTo(Consts.Web.LoginPath, true);
+                return;
+            }
+
+            await InvokeAsync(StateHasChanged);
+            await LoadAdministradores();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing administradores page");
+            Navigation.NavigateTo(Consts.Web.LoginPath, true);
+        }
+    }
+
+    private async Task LoadAdministradores()
+    {
+        IsLoading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            AdministradoresList = await PharmazapApiService.GetAdministradoresAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading administradores");
+            ToastService.ShowError("Erro ao carregar administradores.");
+        }
+        finally
+        {
+            IsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            StateHasChanged();
+    }
+
+    private void ClearFilters()
+    {
+        SearchQuery = "";
+        FilterStatus = FilterStatusEnum.All;
+        StateHasChanged();
+    }
+
+    private void ShowNovoAdministrador()
+    {
+        _editingAdministrador = null;
+        _showFormDialog = true;
+    }
+
+    private void ShowEditAdministrador(AdministradorDto administrador)
+    {
+        _editingAdministrador = administrador;
+        _showFormDialog = true;
+    }
+
+    private async Task OnFormDialogVisibleChanged(bool visible)
+    {
+        _showFormDialog = visible;
+        StateHasChanged();
+    }
+
+    private async Task HandleFormSave((bool IsNew, CreateAdministradorDto? Create, UpdateAdministradorDto? Update) args)
+    {
+        _showFormDialog = false;
+
+        if (args.IsNew && args.Create != null)
+        {
+            var (success, message) = await PharmazapApiService.CreateAdministradorAsync(args.Create);
+            if (success)
+            {
+                ToastService.ShowSuccess("Administrador criado com sucesso!");
+                await LoadAdministradores();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao criar administrador: {message}");
+            }
+        }
+        else if (!args.IsNew && args.Update != null && _editingAdministrador != null)
+        {
+            var (success, message) = await PharmazapApiService.UpdateAdministradorAsync(_editingAdministrador.Id, args.Update);
+            if (success)
+            {
+                ToastService.ShowSuccess("Administrador atualizado com sucesso!");
+                await LoadAdministradores();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao atualizar administrador: {message}");
+            }
+        }
+        _editingAdministrador = null;
+    }
+
+    private void ConfirmInativar(AdministradorDto administrador)
+    {
+        _confirmTitle = "Inativar Administrador";
+        _confirmMessage = $"Tem certeza que deseja inativar o administrador \"{administrador.Nome}\"?";
+        _confirmAction = async () =>
+        {
+            var (success, message) = await PharmazapApiService.InativarAdministradorAsync(administrador.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess("Administrador inativado com sucesso!");
+                await LoadAdministradores();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao inativar administrador: {message}");
+            }
+        };
+        _showConfirmDialog = true;
+    }
+
+    private void ConfirmAtivar(AdministradorDto administrador)
+    {
+        _confirmTitle = "Ativar Administrador";
+        _confirmMessage = $"Tem certeza que deseja ativar o administrador \"{administrador.Nome}\"?";
+        _confirmAction = async () =>
+        {
+            var (success, message) = await PharmazapApiService.AtivarAdministradorAsync(administrador.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess("Administrador ativado com sucesso!");
+                await LoadAdministradores();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao ativar administrador: {message}");
+            }
+        };
+        _showConfirmDialog = true;
+    }
+
+    private void CancelConfirm()
+    {
+        _showConfirmDialog = false;
+        _confirmAction = null;
+    }
+
+    private async Task ExecuteConfirm()
+    {
+        _showConfirmDialog = false;
+        if (_confirmAction != null)
+        {
+            await _confirmAction();
+            _confirmAction = null;
+        }
+    }
+
+    private void ShowResetSenha(AdministradorDto administrador)
+    {
+        _resetSenhaAdministrador = administrador;
+        _resetSenhaNome = administrador.Nome;
+        _resetSenhaNova = "";
+        _resetSenhaConfirm = "";
+        _resetSenhaError = "";
+        _showResetSenhaDialog = true;
+    }
+
+    private void CancelResetSenha()
+    {
+        _showResetSenhaDialog = false;
+        _resetSenhaAdministrador = null;
+        _resetSenhaNova = "";
+        _resetSenhaConfirm = "";
+        _resetSenhaError = "";
+    }
+
+    private async Task ExecuteResetSenha()
+    {
+        _resetSenhaError = "";
+
+        if (string.IsNullOrWhiteSpace(_resetSenhaNova))
+        {
+            _resetSenhaError = "A nova senha é obrigatória.";
+            return;
+        }
+        if (_resetSenhaNova.Length < 6)
+        {
+            _resetSenhaError = "A senha deve ter no mínimo 6 caracteres.";
+            return;
+        }
+        if (_resetSenhaNova != _resetSenhaConfirm)
+        {
+            _resetSenhaError = "As senhas não coincidem.";
+            return;
+        }
+
+        _isResettingSenha = true;
+        try
+        {
+            var (success, message) = await PharmazapApiService.ResetSenhaAdministradorAsync(_resetSenhaAdministrador!.Id, _resetSenhaNova);
+            if (success)
+            {
+                _showResetSenhaDialog = false;
+                ToastService.ShowSuccess($"Senha de \"{_resetSenhaNome}\" redefinida com sucesso!");
+                _resetSenhaAdministrador = null;
+            }
+            else
+            {
+                _resetSenhaError = message;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error resetting password");
+            _resetSenhaError = "Erro ao redefinir senha.";
+        }
+        finally
+        {
+            _isResettingSenha = false;
+        }
+    }
+
+    private enum FilterStatusEnum { All, Active, Inactive }
+}

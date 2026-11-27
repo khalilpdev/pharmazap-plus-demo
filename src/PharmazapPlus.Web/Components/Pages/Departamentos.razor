@@ -1,0 +1,412 @@
+@page "/departamentos"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = UserRoles.Administrador)]
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<Departamentos> Logger
+@inject IPharmazapApiService PharmazapApiService
+@inject IToastService ToastService
+
+<PageTitle>Departamentos - Pharmazap Plus</PageTitle>
+
+<div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+    @if (CurrentUser != null)
+    {
+        <div style="flex-shrink: 0; width: 100%;">
+            <FluentCard Style="padding: 1rem 2rem; border-radius: 0; width: 100%;">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="12" Style="flex: 1; min-width: 0;">
+                        <FluentIcon Icon="@(Icons.Regular.Size32.Building)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="min-width: 0;">
+                            <FluentLabel Typo="Typography.PageTitle" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Gerenciamento de Departamentos</FluentLabel>
+                            <FluentLabel Typo="Typography.Body">Gerencie os departamentos disponíveis para a farmácia</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="margin-left: auto; flex-shrink: 0; width: auto;">
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovoDepartamento">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Slot="start" Color="Color.Fill" />
+                            Novo Departamento
+                        </FluentButton>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+        </div>
+
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 10; overflow: visible;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8"
+                             VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+                    <FluentTextField @bind-Value="@SearchQuery"
+                                    Placeholder="Buscar por nome..."
+                                    Style="flex: 1;"
+                                    Autocomplete="off"
+                                    @onkeydown="HandleSearchKeyDown">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Search)" Slot="start" />
+                    </FluentTextField>
+
+                    <FluentSelect TOption="FilterStatusEnum"
+                                 @bind-SelectedOption="@FilterStatus"
+                                 Style="min-width: 180px; position: relative; z-index: 10; overflow: visible;">
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.All)">Todos</FluentOption>
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.Active)">Ativos</FluentOption>
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.Inactive)">Inativos</FluentOption>
+                    </FluentSelect>
+
+                    <FluentButton Appearance="Appearance.Outline" @onclick="ClearFilters">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" Slot="start" />
+                        Limpar
+                    </FluentButton>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="32" Wrap="true">
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.Building)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--accent-fill-rest);">@TotalDepartamentos</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Total de Departamentos</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.Building)" Color="Color.Success" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusSuccessForeground3);">@DepartamentosAtivos</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Ativos</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.Prohibited)" Color="Color.Warning" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusWarningForeground3);">@DepartamentosInativos</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Inativos</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                @if (IsLoading)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12" Style="padding: 3rem;">
+                        <FluentProgressRing />
+                        <FluentLabel>Carregando departamentos...</FluentLabel>
+                    </FluentStack>
+                }
+                else if (!DepartamentosFiltrados.Any())
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12"
+                                 Style="padding: 4rem; text-align: center;">
+                        <FluentIcon Icon="@(Icons.Regular.Size48.Building)" Style="color: var(--neutral-foreground-hint);" />
+                        <FluentLabel Typo="Typography.Subject">Nenhum departamento encontrado</FluentLabel>
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Crie departamentos para organizar o atendimento da farmácia</FluentLabel>
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovoDepartamento">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Slot="start" Color="Color.Fill" />
+                            Criar Primeiro Departamento
+                        </FluentButton>
+                    </FluentStack>
+                }
+                else
+                {
+                    <FluentDataGrid Items="@DepartamentosFiltrados"
+                                   GridTemplateColumns="minmax(220px,auto) minmax(100px,auto) minmax(140px,auto)"
+                                   Style="width: 100%; min-width: max-content; overflow-x: auto;">
+
+                        <PropertyColumn Property="@(d => d.Nome)"
+                                      Title="Departamento"
+                                      Sortable="true" />
+
+                        <TemplateColumn Title="Status">
+                            @if (context.Ativo)
+                            {
+                                <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@Consts.DesignTokens.SuccessBackground">Ativo</FluentBadge>
+                            }
+                            else
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral">Inativo</FluentBadge>
+                            }
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Ações">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="4">
+                                <FluentButton Appearance="Appearance.Stealth"
+                                               Title="Editar"
+                                               @onclick="@(() => ShowEditDepartamento(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Edit)" />
+                                </FluentButton>
+                                @if (context.Ativo)
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                   Title="Inativar"
+                                                   @onclick="@(() => ConfirmInativar(context))">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Prohibited)" />
+                                    </FluentButton>
+                                }
+                                else
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                   Title="Ativar"
+                                                   @onclick="@(() => ConfirmAtivar(context))">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Building)" />
+                                    </FluentButton>
+                                }
+                            </FluentStack>
+                        </TemplateColumn>
+                    </FluentDataGrid>
+                }
+            </FluentCard>
+        </div>
+    }
+    else
+    {
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;">
+            <FluentProgressRing />
+            <FluentLabel>Carregando...</FluentLabel>
+        </div>
+    }
+</div>
+
+<FluentDialog @ref="_confirmDialog" Modal="true" Hidden="@(!_showConfirmDialog)" TrapFocus="true"
+              @ondialogdismiss="CancelConfirm">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentLabel Typo="Typography.Subject">@_confirmTitle</FluentLabel>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CancelConfirm" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentLabel>@_confirmMessage</FluentLabel>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CancelConfirm">Cancelar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ExecuteConfirm">Confirmar</FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<DepartamentoFormDialog Visible="@_showFormDialog"
+                        VisibleChanged="@OnFormDialogVisibleChanged"
+                        Departamento="@_editingDepartamento"
+                        OnSave="@HandleFormSave" />
+
+@code {
+    private UserInfo? CurrentUser { get; set; }
+    private List<DepartamentoDto> DepartamentosList { get; set; } = new();
+
+    private IQueryable<DepartamentoDto> DepartamentosFiltrados
+    {
+        get
+        {
+            var filtered = DepartamentosList.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                filtered = filtered.Where(d =>
+                    d.Nome?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false);
+            }
+
+            filtered = FilterStatus switch
+            {
+                FilterStatusEnum.Active => filtered.Where(d => d.Ativo),
+                FilterStatusEnum.Inactive => filtered.Where(d => !d.Ativo),
+                _ => filtered
+            };
+
+            return filtered.AsQueryable();
+        }
+    }
+
+    private string SearchQuery { get; set; } = "";
+    private FilterStatusEnum FilterStatus { get; set; } = FilterStatusEnum.All;
+    private bool IsLoading { get; set; } = true;
+
+    private int TotalDepartamentos => DepartamentosList.Count;
+    private int DepartamentosAtivos => DepartamentosList.Count(d => d.Ativo);
+    private int DepartamentosInativos => DepartamentosList.Count(d => !d.Ativo);
+
+    private bool _showFormDialog = false;
+    private DepartamentoDto? _editingDepartamento;
+
+    private FluentDialog? _confirmDialog;
+    private bool _showConfirmDialog;
+    private string _confirmTitle = "";
+    private string _confirmMessage = "";
+    private Func<Task>? _confirmAction;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            SearchQuery = "";
+            FilterStatus = FilterStatusEnum.All;
+
+            CurrentUser = await AuthService.GetUserInfo();
+            if (CurrentUser == null)
+            {
+                Navigation.NavigateTo(Consts.Web.LoginPath, true);
+                return;
+            }
+
+            await InvokeAsync(StateHasChanged);
+            await LoadDepartamentos();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing departamentos page");
+            Navigation.NavigateTo(Consts.Web.LoginPath, true);
+        }
+    }
+
+    private async Task LoadDepartamentos()
+    {
+        IsLoading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            DepartamentosList = await PharmazapApiService.GetDepartamentosAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading departamentos");
+            ToastService.ShowError("Erro ao carregar departamentos.");
+        }
+        finally
+        {
+            IsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            StateHasChanged();
+    }
+
+    private void ClearFilters()
+    {
+        SearchQuery = "";
+        FilterStatus = FilterStatusEnum.All;
+        StateHasChanged();
+    }
+
+    private void ShowNovoDepartamento()
+    {
+        _editingDepartamento = null;
+        _showFormDialog = true;
+    }
+
+    private void ShowEditDepartamento(DepartamentoDto departamento)
+    {
+        _editingDepartamento = departamento;
+        _showFormDialog = true;
+    }
+
+    private async Task OnFormDialogVisibleChanged(bool visible)
+    {
+        _showFormDialog = visible;
+        StateHasChanged();
+    }
+
+    private async Task HandleFormSave((bool IsNew, CreateDepartamentoDto? Create, UpdateDepartamentoDto? Update) args)
+    {
+        _showFormDialog = false;
+
+        if (args.IsNew && args.Create != null)
+        {
+            var (success, message) = await PharmazapApiService.CreateDepartamentoAsync(args.Create);
+            if (success)
+            {
+                ToastService.ShowSuccess("Departamento criado com sucesso!");
+                await LoadDepartamentos();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao criar departamento: {message}");
+            }
+        }
+        else if (!args.IsNew && args.Update != null && _editingDepartamento != null)
+        {
+            var (success, message) = await PharmazapApiService.UpdateDepartamentoAsync(_editingDepartamento.Id, args.Update);
+            if (success)
+            {
+                ToastService.ShowSuccess("Departamento atualizado com sucesso!");
+                await LoadDepartamentos();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao atualizar departamento: {message}");
+            }
+        }
+
+        _editingDepartamento = null;
+    }
+
+    private void ConfirmInativar(DepartamentoDto departamento)
+    {
+        _confirmTitle = "Inativar Departamento";
+        _confirmMessage = $"Tem certeza que deseja inativar o departamento \"{departamento.Nome}\"?";
+        _confirmAction = async () =>
+        {
+            var (success, message) = await PharmazapApiService.InativarDepartamentoAsync(departamento.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess("Departamento inativado com sucesso!");
+                await LoadDepartamentos();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao inativar departamento: {message}");
+            }
+        };
+        _showConfirmDialog = true;
+    }
+
+    private void ConfirmAtivar(DepartamentoDto departamento)
+    {
+        _confirmTitle = "Ativar Departamento";
+        _confirmMessage = $"Tem certeza que deseja ativar o departamento \"{departamento.Nome}\"?";
+        _confirmAction = async () =>
+        {
+            var (success, message) = await PharmazapApiService.AtivarDepartamentoAsync(departamento.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess("Departamento ativado com sucesso!");
+                await LoadDepartamentos();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao ativar departamento: {message}");
+            }
+        };
+        _showConfirmDialog = true;
+    }
+
+    private void CancelConfirm()
+    {
+        _showConfirmDialog = false;
+        _confirmAction = null;
+    }
+
+    private async Task ExecuteConfirm()
+    {
+        _showConfirmDialog = false;
+        if (_confirmAction != null)
+        {
+            await _confirmAction();
+            _confirmAction = null;
+        }
+    }
+}

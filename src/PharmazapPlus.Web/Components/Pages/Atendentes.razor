@@ -1,0 +1,577 @@
+@page "/atendentes"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = UserRoles.GestorOuAdministrador)]
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<Atendentes> Logger
+@inject IPharmazapApiService PharmazapApiService
+@inject IToastService ToastService
+
+<PageTitle>Atendentes - Pharmazap Plus</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" Style="height: 100%; overflow: hidden;">
+    @if (CurrentUser != null)
+    {
+        <div style="flex-shrink: 0; width: 100%;">
+            <FluentCard Style="padding: 1rem 2rem; border-radius: 0; width: 100%;">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="12" Style="flex: 1; min-width: 0;">
+                        <FluentIcon Icon="@(Icons.Regular.Size32.People)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="min-width: 0;">
+                            <FluentLabel Typo="Typography.PageTitle" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Gerenciamento de Atendentes</FluentLabel>
+                            <FluentLabel Typo="Typography.Body">Gerencie os atendentes da farmácia</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="margin-left: auto; flex-shrink: 0; padding-left: 1rem; width: auto;">
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovoAtendente">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.PersonAdd)" Slot="start" Color="Color.Fill" />
+                            Novo Atendente
+                        </FluentButton>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+        </div>
+
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 10; overflow: visible;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8"
+                             VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+                    <FluentTextField @bind-Value="@SearchQuery"
+                                    Placeholder="Buscar por nome ou email..."
+                                    Style="flex: 1;"
+                                    Autocomplete="off"
+                                    @onkeydown="HandleSearchKeyDown">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Search)" Slot="start" />
+                    </FluentTextField>
+
+                    <FluentSelect TOption="FilterStatusEnum"
+                                 @bind-SelectedOption="@FilterStatus"
+                                 Style="min-width: 180px; position: relative; z-index: 10; overflow: visible;">
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.All)">Todos</FluentOption>
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.Active)">Ativos</FluentOption>
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.Inactive)">Inativos</FluentOption>
+                    </FluentSelect>
+
+                    <FluentButton Appearance="Appearance.Outline" @onclick="ClearFilters">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" Slot="start" />
+                        Limpar
+                    </FluentButton>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="32" Wrap="true">
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.People)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--accent-fill-rest);">@TotalAtendentes</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Total de Atendentes</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.PersonAvailable)" Color="Color.Success" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusSuccessForeground3);">@AtendentesAtivos</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Ativos</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.PersonProhibited)" Color="Color.Warning" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusWarningForeground3);">@AtendentesInativos</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Inativos</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                @if (IsLoading)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12" Style="padding: 3rem;">
+                        <FluentProgressRing />
+                        <FluentLabel>Carregando atendentes...</FluentLabel>
+                    </FluentStack>
+                }
+                else if (!AtendentesFiltrados.Any())
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12"
+                                 Style="padding: 4rem; text-align: center;">
+                        <FluentIcon Icon="@(Icons.Regular.Size48.People)" Style="color: var(--neutral-foreground-hint);" />
+                        @if (TotalAtendentes == 0)
+                        {
+                            <FluentLabel Typo="Typography.Subject">Nenhum atendente cadastrado</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Comece adicionando o primeiro atendente da farmácia</FluentLabel>
+                            <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovoAtendente">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.PersonAdd)" Slot="start" Color="Color.Fill" />
+                                Adicionar Primeiro Atendente
+                            </FluentButton>
+                        }
+                        else
+                        {
+                            <FluentLabel Typo="Typography.Subject">Nenhum atendente encontrado</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Nenhum resultado para os filtros aplicados. Tente ajustar a busca ou clique em Limpar.</FluentLabel>
+                        }
+                    </FluentStack>
+                }
+                else
+                {
+                    <FluentDataGrid Items="@AtendentesFiltrados"
+                                   GridTemplateColumns="2fr 2fr 1fr 1fr 1fr 160px"
+                                   Style="width: 100%; overflow-x: auto;">
+
+                        <PropertyColumn Property="@(a => a.Nome)"
+                                      Title="Nome"
+                                      Sortable="true" />
+
+                        <PropertyColumn Property="@(a => a.Email)"
+                                      Title="Email"
+                                      Sortable="true" />
+
+                        <PropertyColumn Property="@(a => a.Turno)"
+                                      Title="Turno"
+                                      Sortable="true" />
+
+                        <TemplateColumn Title="Notificações">
+                            @if (context.RecebeNotificacoes)
+                            {
+                                <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@Consts.DesignTokens.SuccessBackground">Sim</FluentBadge>
+                            }
+                            else
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral">Não</FluentBadge>
+                            }
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Status">
+                            @if (context.Ativo)
+                            {
+                                <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@Consts.DesignTokens.SuccessBackground">Ativo</FluentBadge>
+                            }
+                            else
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral">Inativo</FluentBadge>
+                            }
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Ações">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="4">
+                                <FluentButton Appearance="Appearance.Stealth"
+                                               Title="Editar"
+                                               @onclick="@(() => ShowEditAtendente(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Edit)" />
+                                </FluentButton>
+                                <FluentButton Appearance="Appearance.Stealth"
+                                               Title="Redefinir Senha"
+                                               @onclick="@(() => ShowResetSenha(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Password)" />
+                                </FluentButton>
+                                @if (context.Ativo)
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                   Title="Inativar"
+                                                   @onclick="@(() => ConfirmInativar(context))">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.PersonProhibited)" />
+                                    </FluentButton>
+                                }
+                                else
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                   Title="Ativar"
+                                                   @onclick="@(() => ConfirmAtivar(context))">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.PersonAvailable)" />
+                                    </FluentButton>
+                                }
+                            </FluentStack>
+                        </TemplateColumn>
+                    </FluentDataGrid>
+                }
+            </FluentCard>
+        </div>
+    }
+    else
+    {
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;">
+            <FluentProgressRing />
+            <FluentLabel>Carregando...</FluentLabel>
+        </div>
+    }
+</FluentStack>
+
+<!-- Confirmation Dialog for Inativar/Ativar -->
+<FluentDialog @ref="_confirmDialog" Modal="true" Hidden="@(!_showConfirmDialog)" TrapFocus="true"
+              @ondialogdismiss="CancelConfirm">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentLabel Typo="Typography.Subject">@_confirmTitle</FluentLabel>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CancelConfirm" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentLabel>@_confirmMessage</FluentLabel>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CancelConfirm">Cancelar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ExecuteConfirm">Confirmar</FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Reset Senha Dialog -->
+<FluentDialog Modal="true" Hidden="@(!_showResetSenhaDialog)" TrapFocus="true"
+              @ondialogdismiss="CancelResetSenha">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Password)" />
+                <FluentLabel Typo="Typography.Subject">Redefinir Senha — @_resetSenhaNome</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CancelResetSenha" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0;">
+            <FluentTextField @bind-Value="@_resetSenhaNova"
+                             Label="Nova Senha *"
+                             Placeholder="Mínimo 6 caracteres"
+                             Style="width: 100%;"
+                             Autocomplete="new-password"
+                             TextFieldType="TextFieldType.Password" />
+            <FluentTextField @bind-Value="@_resetSenhaConfirm"
+                             Label="Confirmar Nova Senha *"
+                             Placeholder="Repita a nova senha"
+                             Style="width: 100%;"
+                             Autocomplete="new-password"
+                             TextFieldType="TextFieldType.Password" />
+            @if (!string.IsNullOrEmpty(_resetSenhaError))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_resetSenhaError</FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CancelResetSenha" Disabled="@_isResettingSenha">Cancelar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ExecuteResetSenha" Disabled="@_isResettingSenha">
+            @if (_isResettingSenha)
+            {
+                <FluentProgressRing Style="width:16px; height:16px;" />
+                <span style="margin-left:0.5rem;">Salvando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Password)" Slot="start" Color="Color.Fill" />
+                <span>Redefinir Senha</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Form Dialog for Create/Edit -->
+<AtendenteFormDialog Visible="@_showFormDialog"
+                     VisibleChanged="@OnFormDialogVisibleChanged"
+                     Atendente="@_editingAtendente"
+                     OnSave="@HandleFormSave" />
+
+@code {
+    private UserInfo? CurrentUser { get; set; }
+    private List<AtendenteDto> AtendentesList { get; set; } = new();
+
+    private IQueryable<AtendenteDto> AtendentesFiltrados
+    {
+        get
+        {
+            var filtered = AtendentesList.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                filtered = filtered.Where(a =>
+                    (a.Nome?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (a.Email?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            filtered = FilterStatus switch
+            {
+                FilterStatusEnum.Active => filtered.Where(a => a.Ativo),
+                FilterStatusEnum.Inactive => filtered.Where(a => !a.Ativo),
+                _ => filtered
+            };
+
+            return filtered.AsQueryable();
+        }
+    }
+
+    private string SearchQuery { get; set; } = string.Empty;
+    private FilterStatusEnum FilterStatus { get; set; } = FilterStatusEnum.All;
+    private bool IsLoading { get; set; } = true;
+
+    private int TotalAtendentes => AtendentesList.Count;
+    private int AtendentesAtivos => AtendentesList.Count(a => a.Ativo);
+    private int AtendentesInativos => AtendentesList.Count(a => !a.Ativo);
+
+    // Form dialog
+    private bool _showFormDialog = false;
+    private AtendenteDto? _editingAtendente = null;
+
+    // Confirmation dialog
+    private FluentDialog? _confirmDialog;
+    private bool _showConfirmDialog = false;
+    private string _confirmTitle = "";
+    private string _confirmMessage = "";
+    private Func<Task>? _confirmAction;
+
+    // Reset senha dialog
+    private bool _showResetSenhaDialog = false;
+    private AtendenteDto? _resetSenhaAtendente = null;
+    private string _resetSenhaNome = "";
+    private string _resetSenhaNova = "";
+    private string _resetSenhaConfirm = "";
+    private string _resetSenhaError = "";
+    private bool _isResettingSenha = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            SearchQuery = string.Empty;
+            FilterStatus = FilterStatusEnum.All;
+            // Force re-render to clear any browser-injected autocomplete value before loading data
+            await InvokeAsync(StateHasChanged);
+
+            CurrentUser = await AuthService.GetUserInfo();
+            if (CurrentUser == null)
+            {
+                Navigation.NavigateTo(Consts.Web.LoginPath, true);
+                return;
+            }
+
+            await InvokeAsync(StateHasChanged);
+            await LoadAtendentes();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing atendentes page");
+            Navigation.NavigateTo(Consts.Web.LoginPath, true);
+        }
+    }
+
+    private async Task LoadAtendentes()
+    {
+        IsLoading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            AtendentesList = await PharmazapApiService.GetAtendentesAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading atendentes");
+            ToastService.ShowError("Erro ao carregar atendentes.");
+        }
+        finally
+        {
+            IsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            StateHasChanged();
+    }
+
+    private void ClearFilters()
+    {
+        SearchQuery = "";
+        FilterStatus = FilterStatusEnum.All;
+        StateHasChanged();
+    }
+
+    private void ShowNovoAtendente()
+    {
+        _editingAtendente = null;
+        _showFormDialog = true;
+    }
+
+    private void ShowEditAtendente(AtendenteDto atendente)
+    {
+        _editingAtendente = atendente;
+        _showFormDialog = true;
+    }
+
+    private async Task OnFormDialogVisibleChanged(bool visible)
+    {
+        _showFormDialog = visible;
+        StateHasChanged();
+    }
+
+    private async Task HandleFormSave((bool IsNew, CreateAtendenteDto? Create, UpdateAtendenteDto? Update) args)
+    {
+        _showFormDialog = false;
+
+        if (args.IsNew && args.Create != null)
+        {
+            var (success, message) = await PharmazapApiService.CreateAtendenteAsync(args.Create);
+            if (success)
+            {
+                ToastService.ShowSuccess("Atendente criado com sucesso!");
+                await LoadAtendentes();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao criar atendente: {message}");
+            }
+        }
+        else if (!args.IsNew && args.Update != null && _editingAtendente != null)
+        {
+            var (success, message) = await PharmazapApiService.UpdateAtendenteAsync(_editingAtendente.Id, args.Update);
+            if (success)
+            {
+                ToastService.ShowSuccess("Atendente atualizado com sucesso!");
+                await LoadAtendentes();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao atualizar atendente: {message}");
+            }
+        }
+        _editingAtendente = null;
+    }
+
+    private void ConfirmInativar(AtendenteDto atendente)
+    {
+        _confirmTitle = "Inativar Atendente";
+        _confirmMessage = $"Tem certeza que deseja inativar o atendente \"{atendente.Nome}\"?";
+        _confirmAction = async () =>
+        {
+            var (success, message) = await PharmazapApiService.InativarAtendenteAsync(atendente.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess("Atendente inativado com sucesso!");
+                await LoadAtendentes();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao inativar atendente: {message}");
+            }
+        };
+        _showConfirmDialog = true;
+    }
+
+    private void ConfirmAtivar(AtendenteDto atendente)
+    {
+        _confirmTitle = "Ativar Atendente";
+        _confirmMessage = $"Tem certeza que deseja ativar o atendente \"{atendente.Nome}\"?";
+        _confirmAction = async () =>
+        {
+            var (success, message) = await PharmazapApiService.AtivarAtendenteAsync(atendente.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess("Atendente ativado com sucesso!");
+                await LoadAtendentes();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao ativar atendente: {message}");
+            }
+        };
+        _showConfirmDialog = true;
+    }
+
+    private void CancelConfirm()
+    {
+        _showConfirmDialog = false;
+        _confirmAction = null;
+    }
+
+    private async Task ExecuteConfirm()
+    {
+        _showConfirmDialog = false;
+        if (_confirmAction != null)
+        {
+            await _confirmAction();
+            _confirmAction = null;
+        }
+    }
+
+    private void ShowResetSenha(AtendenteDto atendente)
+    {
+        _resetSenhaAtendente = atendente;
+        _resetSenhaNome = atendente.Nome;
+        _resetSenhaNova = "";
+        _resetSenhaConfirm = "";
+        _resetSenhaError = "";
+        _showResetSenhaDialog = true;
+    }
+
+    private void CancelResetSenha()
+    {
+        _showResetSenhaDialog = false;
+        _resetSenhaAtendente = null;
+        _resetSenhaNova = "";
+        _resetSenhaConfirm = "";
+        _resetSenhaError = "";
+    }
+
+    private async Task ExecuteResetSenha()
+    {
+        _resetSenhaError = "";
+
+        if (string.IsNullOrWhiteSpace(_resetSenhaNova))
+        {
+            _resetSenhaError = "A nova senha é obrigatória.";
+            return;
+        }
+        if (_resetSenhaNova.Length < 6)
+        {
+            _resetSenhaError = "A senha deve ter no mínimo 6 caracteres.";
+            return;
+        }
+        if (_resetSenhaNova != _resetSenhaConfirm)
+        {
+            _resetSenhaError = "As senhas não coincidem.";
+            return;
+        }
+
+        _isResettingSenha = true;
+        try
+        {
+            var (success, message) = await PharmazapApiService.ResetSenhaAtendenteAsync(_resetSenhaAtendente!.Id, _resetSenhaNova);
+            if (success)
+            {
+                _showResetSenhaDialog = false;
+                ToastService.ShowSuccess($"Senha de \"{_resetSenhaNome}\" redefinida com sucesso!");
+                _resetSenhaAtendente = null;
+            }
+            else
+            {
+                _resetSenhaError = message;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error resetting password for atendente");
+            _resetSenhaError = "Erro ao redefinir senha. Tente novamente.";
+        }
+        finally
+        {
+            _isResettingSenha = false;
+        }
+    }
+}

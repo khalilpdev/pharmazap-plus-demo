@@ -1,0 +1,202 @@
+@* PharmazapPlus.Web/Components/Pages/AdministradorFormDialog.razor *@
+
+@inject ILogger<AdministradorFormDialog> Logger
+
+<FluentDialog @ref="_dialog" Modal="true" Hidden="@(!Visible)" TrapFocus="true"
+              @ondialogdismiss="HandleCancel"
+              aria-label="@(Administrador == null ? "Novo Administrador" : "Editar Administrador")">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.PersonAdd)" />
+                <FluentLabel Typo="Typography.Subject">@(Administrador == null ? "Novo Administrador" : "Editar Administrador")</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="HandleCancel" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+
+    <FluentDialogBody Style="overflow: visible;">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0; overflow: visible; position: relative; z-index: 30;">
+
+            <FluentTextField @bind-Value="@_nome"
+                             Label="Nome *"
+                             Placeholder="Nome completo"
+                             Style="width: 100%;"
+                             Required="true" />
+
+            <FluentTextField @bind-Value="@_email"
+                             Label="Email *"
+                             Placeholder="email@sistema.com"
+                             Style="width: 100%;"
+                             Required="true"
+                             Autocomplete="off"
+                             Type="InputType.Email" />
+
+            <FluentTextField Value="@_telefone"
+                             ValueChanged="@(v => _telefone = v.MaskTelefoneInput())"
+                             Immediate="true"
+                             Label="Telefone"
+                             Placeholder="(11) 99999-9999"
+                             MaxLength="16"
+                             Style="width: 100%;" />
+
+            @if (Administrador == null)
+            {
+                <FluentTextField @bind-Value="@_password"
+                                 Label="Senha *"
+                                 Placeholder="Mínimo 6 caracteres"
+                                 Style="width: 100%;"
+                                 Required="true"
+                                 Autocomplete="new-password"
+                                 TextFieldType="TextFieldType.Password" />
+            }
+
+            <FluentSelect TOption="string"
+                          @bind-Value="@_turno"
+                          Label="Turno"
+                          Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                <FluentOption TOption="string" Value="Manhã">Manhã</FluentOption>
+                <FluentOption TOption="string" Value="Tarde">Tarde</FluentOption>
+                <FluentOption TOption="string" Value="Noite">Noite</FluentOption>
+                <FluentOption TOption="string" Value="Integral">Integral</FluentOption>
+            </FluentSelect>
+
+            <FluentCheckbox @bind-Value="@_recebeNotificacoes">
+                Recebe Notificações
+            </FluentCheckbox>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_errorMessage</FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="HandleCancel" Disabled="@_isSaving">
+            Cancelar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="HandleSave" Disabled="@_isSaving">
+            @if (_isSaving)
+            {
+                <FluentProgressRing Style="width:16px; height:16px;" />
+                <span style="margin-left:0.5rem;">Salvando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Save)" Slot="start" Color="Color.Fill" />
+                <span>@(Administrador == null ? "Criar" : "Salvar")</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public AdministradorDto? Administrador { get; set; }
+    [Parameter] public EventCallback<(bool IsNew, CreateAdministradorDto? Create, UpdateAdministradorDto? Update)> OnSave { get; set; }
+
+    private FluentDialog? _dialog;
+    private string _nome = "";
+    private string _email = "";
+    private string _telefone = "";
+    private string _password = "";
+    private string _turno = "Integral";
+    private bool _recebeNotificacoes = true;
+    private bool _isSaving = false;
+    private string _errorMessage = "";
+
+    protected override void OnParametersSet()
+    {
+        if (Administrador != null)
+        {
+            _nome = Administrador.Nome;
+            _email = Administrador.Email;
+            _telefone = Administrador.Telefone.MaskTelefoneInput();
+            _turno = Administrador.Turno ?? "Integral";
+            _recebeNotificacoes = Administrador.RecebeNotificacoes;
+        }
+        else
+        {
+            _nome = "";
+            _email = "";
+            _telefone = "";
+            _password = "";
+            _turno = "Integral";
+            _recebeNotificacoes = true;
+        }
+        _errorMessage = "";
+        _isSaving = false;
+    }
+
+    private async Task HandleSave()
+    {
+        _errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(_nome))
+        {
+            _errorMessage = "Nome é obrigatório.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_email))
+        {
+            _errorMessage = "Email é obrigatório.";
+            return;
+        }
+        if (Administrador == null && string.IsNullOrWhiteSpace(_password))
+        {
+            _errorMessage = "Senha é obrigatória.";
+            return;
+        }
+        if (Administrador == null && _password.Length < 6)
+        {
+            _errorMessage = "A senha deve ter no mínimo 6 caracteres.";
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            if (Administrador == null)
+            {
+                var create = new CreateAdministradorDto
+                {
+                    Nome = _nome.Trim(),
+                    Email = _email.Trim(),
+                    Password = _password,
+                    Telefone = string.IsNullOrWhiteSpace(_telefone) ? null : _telefone.SanitizeDigits(11),
+                    Turno = _turno,
+                    RecebeNotificacoes = _recebeNotificacoes
+                };
+                await OnSave.InvokeAsync((true, create, null));
+            }
+            else
+            {
+                var update = new UpdateAdministradorDto
+                {
+                    Nome = _nome.Trim(),
+                    Email = _email.Trim(),
+                    Telefone = string.IsNullOrWhiteSpace(_telefone) ? null : _telefone.SanitizeDigits(11),
+                    Turno = _turno,
+                    RecebeNotificacoes = _recebeNotificacoes
+                };
+                await OnSave.InvokeAsync((false, null, update));
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        await VisibleChanged.InvokeAsync(false);
+    }
+}

@@ -1,0 +1,111 @@
+@page "/termos-de-uso"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize]
+
+@using Markdig
+@using Markdig.Extensions.AutoIdentifiers
+
+@inject IWebHostEnvironment Env
+@inject ILogger<TermosDeUso> Logger
+
+<PageTitle>Termos de Uso - Pharmazap Plus</PageTitle>
+
+<div class="termos-container">
+    @if (_isLoading)
+    {
+        <div class="termos-loading">
+            <FluentProgressRing />
+            <FluentLabel>Carregando termos...</FluentLabel>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="termos-error">
+            <FluentIcon Icon="@(Icons.Regular.Size48.ErrorCircle)" Color="Color.Error" />
+            <FluentLabel Typo="Typography.Subject">Não foi possível carregar os termos.</FluentLabel>
+            <FluentLabel Style="color: var(--neutral-foreground-hint);">@_error</FluentLabel>
+        </div>
+    }
+    else
+    {
+        <div class="termos-header">
+            <FluentIcon Icon="@(Icons.Regular.Size32.DocumentText)" Color="Color.Accent" />
+            <div>
+                <FluentLabel Typo="Typography.PageTitle">Termos de Uso e Política de Privacidade</FluentLabel>
+                <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.85rem;">
+                    LGPD — Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018)
+                </FluentLabel>
+            </div>
+        </div>
+
+        <div class="markdown-body">
+            @((MarkupString)_htmlContent)
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isLoading = true;
+    private string _htmlContent = string.Empty;
+    private string _error = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            var filePath = Path.Combine(Env.WebRootPath, "docs", "termos.md");
+            if (!File.Exists(filePath))
+            {
+                _error = "Documento de termos não encontrado.";
+                return;
+            }
+
+            var markdown = await File.ReadAllTextAsync(filePath);
+            _htmlContent = Markdig.Markdown.ToHtml(markdown, BuildPipeline());
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao carregar termos de uso");
+            _error = "Ocorreu um erro inesperado ao carregar o documento.";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private static Markdig.MarkdownPipeline BuildPipeline() =>
+        new Markdig.MarkdownPipelineBuilder()
+            .UseAutoIdentifiers(AutoIdentifierOptions.GitHub)
+            .UseAdvancedExtensions()
+            .Build();
+}
+
+<style>
+    .termos-container {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem;
+    }
+
+    .termos-loading,
+    .termos-error {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        padding: 4rem 0;
+        text-align: center;
+    }
+
+    .termos-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+</style>

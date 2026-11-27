@@ -1,0 +1,144 @@
+@using PharmazapPlus.Web.Services
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+
+    <!-- Header Card -->
+    <FluentCard Style="padding: 1.25rem; background: var(--accent-fill-rest);">
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="12">
+            <FluentIcon Icon="@(Icons.Regular.Size24.Money)" Color="Color.Fill" />
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
+                <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">
+                    Relatório de Faturamento — @(Data.Farmacia?.Nome ?? "Farmácia")
+                </FluentLabel>
+                <FluentLabel Typo="Typography.Body">
+                    Período: @Data.Periodo.Inicio.ToString("dd/MM/yyyy") — @Data.Periodo.Fim.ToString("dd/MM/yyyy")
+                </FluentLabel>
+            </FluentStack>
+        </FluentStack>
+    </FluentCard>
+
+    <!-- Summary Cards -->
+    <FluentGrid Spacing="3" Justify="JustifyContent.FlexStart">
+        <FluentGridItem xs="12" sm="6" md="3">
+            <FluentCard Style="padding: 1.25rem; height: 100%;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="6">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size20.Money)" Color="Color.Accent" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Total Faturado</FluentLabel>
+                    </FluentStack>
+                    <FluentLabel Style="font-size: 1.75rem; font-weight: 700; color: var(--accent-fill-rest);">@Data.Resumo.TotalFaturado.ToString("C", _ptBr)</FluentLabel>
+                </FluentStack>
+            </FluentCard>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="3">
+            <FluentCard Style="padding: 1.25rem; height: 100%;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="6">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size20.Cart)" Color="Color.Accent" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Ticket Médio</FluentLabel>
+                    </FluentStack>
+                    <FluentLabel Style="font-size: 1.75rem; font-weight: 700; color: var(--accent-fill-rest);">@Data.Resumo.TicketMedio.ToString("C", _ptBr)</FluentLabel>
+                </FluentStack>
+            </FluentCard>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="3">
+            <FluentCard Style="padding: 1.25rem; height: 100%;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="6">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size20.CheckmarkCircle)" Color="Color.Accent" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Atendimentos com Venda</FluentLabel>
+                    </FluentStack>
+                    <FluentLabel Style="font-size: 1.75rem; font-weight: 700; color: var(--accent-fill-rest);">@Data.Resumo.TotalAtendimentosComVenda</FluentLabel>
+                </FluentStack>
+            </FluentCard>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="3">
+            <FluentCard Style="padding: 1.25rem; height: 100%;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="6">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size20.DataTrending)" Color="Color.Accent" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Taxa Conversão Venda</FluentLabel>
+                    </FluentStack>
+                    <FluentLabel Style="font-size: 1.75rem; font-weight: 700; color: var(--accent-fill-rest);">@($"{Data.Resumo.TaxaConversaoVenda:F1}%")</FluentLabel>
+                </FluentStack>
+            </FluentCard>
+        </FluentGridItem>
+    </FluentGrid>
+
+    <!-- Breakdown by Attendant -->
+    @if (Data.PorAtendente.Any())
+    {
+        <FluentCard Style="padding: 1.5rem;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentIcon Icon="@(Icons.Regular.Size20.People)" Color="Color.Accent" />
+                    <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Faturamento por Atendente</FluentLabel>
+                </FluentStack>
+
+                <FluentDataGrid Items="@Data.PorAtendente.AsQueryable()" ResizableColumns="true" Style="width: 100%;">
+                    <TemplateColumn Title="Atendente">
+                        <FluentLabel Weight="FontWeight.Bold">@context.Nome</FluentLabel>
+                    </TemplateColumn>
+                    <PropertyColumn Property="@(a => a.TotalAtendimentos)" Title="Finalizados" Sortable="true" Align="Align.Center" />
+                    <PropertyColumn Property="@(a => a.AtendimentosComVenda)" Title="Com Venda" Sortable="true" Align="Align.Center" />
+                    <TemplateColumn Title="Faturamento" Sortable="false">
+                        <FluentLabel Weight="FontWeight.Bold" Style="color: var(--accent-fill-rest);">@context.Faturamento.ToString("C", _ptBr)</FluentLabel>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Ticket Médio" Sortable="false">
+                        @context.TicketMedio.ToString("C", _ptBr)
+                    </TemplateColumn>
+                    <TemplateColumn Title="Conversão Venda" Align="Align.Center">
+                        <FluentBadge Appearance="@GetTaxaBadgeAppearance(context.TaxaConversaoVenda)">
+                            @($"{context.TaxaConversaoVenda:F1}%")
+                        </FluentBadge>
+                    </TemplateColumn>
+                </FluentDataGrid>
+            </FluentStack>
+        </FluentCard>
+    }
+
+    <!-- Sales List -->
+    <FluentCard Style="padding: 1.5rem;">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size20.Receipt)" Color="Color.Accent" />
+                <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Vendas Registradas</FluentLabel>
+                <FluentBadge Appearance="Appearance.Neutral">@Data.Vendas.Count vendas</FluentBadge>
+            </FluentStack>
+
+            @if (Data.Vendas.Any())
+            {
+                <FluentDataGrid Items="@Data.Vendas.AsQueryable()" ResizableColumns="true" Style="width: 100%;">
+                    <PropertyColumn Property="@(v => v.AtendimentoId)" Title="ID" Sortable="true" Align="Align.Center" />
+                    <PropertyColumn Property="@(v => v.ClienteNome)" Title="Cliente" Sortable="true" />
+                    <PropertyColumn Property="@(v => v.AtendenteNome)" Title="Atendente" Sortable="true" />
+                    <PropertyColumn Property="@(v => v.Canal)" Title="Canal" Sortable="true" Align="Align.Center" />
+                    <TemplateColumn Title="Data">
+                        @context.DataFim.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                    </TemplateColumn>
+                    <TemplateColumn Title="Valor" Sortable="false">
+                        <FluentLabel Weight="FontWeight.Bold" Style="color: var(--accent-fill-rest);">@context.ValorVenda.ToString("C", _ptBr)</FluentLabel>
+                    </TemplateColumn>
+                </FluentDataGrid>
+            }
+            else
+            {
+                <FluentLabel Style="color: var(--neutral-foreground-hint);">Nenhuma venda registrada no período.</FluentLabel>
+            }
+        </FluentStack>
+    </FluentCard>
+
+</FluentStack>
+
+@code {
+    [Parameter, EditorRequired]
+    public RelatorioFaturamentoData Data { get; set; } = default!;
+
+    private readonly System.Globalization.CultureInfo _ptBr =
+        System.Globalization.CultureInfo.GetCultureInfo("pt-BR");
+
+    private readonly PaginationState _pagination = new() { ItemsPerPage = 15 };
+
+    private static Appearance GetTaxaBadgeAppearance(double taxa) =>
+        taxa >= 70 ? Appearance.Accent : taxa >= 40 ? Appearance.Neutral : Appearance.Lightweight;
+}

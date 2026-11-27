@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="docker-compose.yml" />
+    <File Path="HOSTGATOR.md" />
+    <File Path="HOSTIGATOR_LOCAL.md" />
+    <File Path="README.md" />
+    <File Path="TESTES_RESUMO.md" />
+    <File Path="WHATSAPP_MOCK.md" />
+  </Folder>
+  <Project Path="PharmazapPlus.API.Tests/PharmazapPlus.API.Tests.csproj" />
+  <Project Path="PharmazapPlus.API/PharmazapPlus.API.csproj" />
+  <Project Path="PharmazapPlus.Shared/PharmazapPlus.Shared.csproj" />
+  <Project Path="PharmazapPlus.Web/PharmazapPlus.Web.csproj" />
+  <Project Path="PharmazapPlus.Worker/PharmazapPlus.Worker.csproj" />
+</Solution>

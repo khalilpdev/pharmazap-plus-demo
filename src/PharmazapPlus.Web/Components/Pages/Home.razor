@@ -1,0 +1,26 @@
+﻿@page "/"
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>PharmazapPlus</PageTitle>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Uses OnAfterRenderAsync because ProtectedLocalStorage requires an active interactive connection
+            var user = await AuthService.GetUserInfo();
+
+            if (user != null)
+            {
+                Navigation.NavigateTo("/dashboard", true);
+            }
+            else
+            {
+                Navigation.NavigateTo("/login", true);
+            }
+        }
+    }
+}

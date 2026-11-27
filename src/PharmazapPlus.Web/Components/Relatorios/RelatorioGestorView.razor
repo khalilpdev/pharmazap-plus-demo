@@ -1,0 +1,132 @@
+@using PharmazapPlus.Web.Services
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+
+    <!-- Summary Cards -->
+    <FluentGrid Spacing="3" Justify="JustifyContent.FlexStart">
+        <FluentGridItem xs="12" sm="6" md="4" lg="2">
+            <FluentCard Style="padding: 1.25rem; height: 100%;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="6">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size20.Building)" Color="Color.Accent" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Farmácias</FluentLabel>
+                    </FluentStack>
+                    <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--accent-fill-rest);">@Data.Resumo.TotalFarmacias</FluentLabel>
+                </FluentStack>
+            </FluentCard>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="4" lg="2">
+            <FluentCard Style="padding: 1.25rem; height: 100%;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="6">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size20.Chat)" Color="Color.Accent" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Atendimentos</FluentLabel>
+                    </FluentStack>
+                    <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--accent-fill-rest);">@Data.Resumo.TotalAtendimentos</FluentLabel>
+                </FluentStack>
+            </FluentCard>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="4" lg="3">
+            <FluentCard Style="padding: 1.25rem; height: 100%;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="6">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size20.Money)" Color="Color.Accent" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Receita Total</FluentLabel>
+                    </FluentStack>
+                    <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--accent-fill-rest);">@Data.Resumo.TotalReceita.ToString("C")</FluentLabel>
+                </FluentStack>
+            </FluentCard>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="4" lg="2">
+            <FluentCard Style="padding: 1.25rem; height: 100%;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="6">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size20.ShoppingBag)" Color="Color.Accent" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Pedidos</FluentLabel>
+                    </FluentStack>
+                    <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--accent-fill-rest);">@Data.Resumo.TotalPedidos</FluentLabel>
+                </FluentStack>
+            </FluentCard>
+        </FluentGridItem>
+        <FluentGridItem xs="12" sm="6" md="4" lg="3">
+            <FluentCard Style="padding: 1.25rem; height: 100%;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="6">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size20.Tag)" Color="Color.Accent" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Ticket Médio</FluentLabel>
+                    </FluentStack>
+                    <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--accent-fill-rest);">@Data.Resumo.TicketMedio.ToString("C")</FluentLabel>
+                </FluentStack>
+            </FluentCard>
+        </FluentGridItem>
+    </FluentGrid>
+
+    <!-- Pharmacy Comparison Table -->
+    <FluentCard Style="padding: 1.5rem;">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size20.Building)" Color="Color.Accent" />
+                <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Desempenho por Farmácia</FluentLabel>
+                <FluentBadge Appearance="Appearance.Neutral">@Data.Farmacias.Count farmácias</FluentBadge>
+            </FluentStack>
+
+            @if (Data.Farmacias.Any())
+            {
+                <FluentDataGrid Items="@Data.Farmacias.AsQueryable()" ResizableColumns="true" Style="width: 100%;">
+                    <PropertyColumn Property="@(f => f.Nome)" Title="Farmácia" Sortable="true" />
+                    <PropertyColumn Property="@(f => f.TotalAtendimentos)" Title="Atendimentos" Sortable="true" Align="Align.Center" />
+                    <PropertyColumn Property="@(f => f.AtendimentosFinalizados)" Title="Finalizados" Sortable="true" Align="Align.Center" />
+                    <TemplateColumn Title="Taxa Finaliz." Align="Align.Center">
+                        <FluentBadge Appearance="@(GetTaxaBadgeAppearance(context.TotalAtendimentos > 0 ? (double)context.AtendimentosFinalizados / context.TotalAtendimentos * 100 : 0))">
+                            @(context.TotalAtendimentos > 0 ? $"{(double)context.AtendimentosFinalizados / context.TotalAtendimentos * 100:F1}%" : "—")
+                        </FluentBadge>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Receita" Sortable="false">
+                        @context.Receita.ToString("C")
+                    </TemplateColumn>
+                    <TemplateColumn Title="Ticket Médio">
+                        @context.TicketMedio.ToString("C")
+                    </TemplateColumn>
+                    <PropertyColumn Property="@(f => f.TotalClientes)" Title="Clientes Ativos" Sortable="true" Align="Align.Center" />
+                </FluentDataGrid>
+            }
+            else
+            {
+                <FluentLabel Style="color: var(--neutral-foreground-hint);">Nenhuma farmácia encontrada no período.</FluentLabel>
+            }
+        </FluentStack>
+    </FluentCard>
+
+    <!-- Trend Section -->
+    @if (Data.TendenciaAtendimentos.Any())
+    {
+        <FluentCard Style="padding: 1.5rem;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentIcon Icon="@(Icons.Regular.Size20.ChartMultiple)" Color="Color.Accent" />
+                    <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Tendência de Atendimentos</FluentLabel>
+                </FluentStack>
+                <FluentDataGrid Items="@Data.TendenciaAtendimentos.AsQueryable()" Style="width: 100%;">
+                    <PropertyColumn Property="@(t => t.Data)" Title="Data" />
+                    <PropertyColumn Property="@(t => t.Quantidade)" Title="Atendimentos" Align="Align.Center" />
+                    <TemplateColumn Title="Barra">
+                        @{
+                            var max = Data.TendenciaAtendimentos.Max(t => t.Quantidade);
+                            var pct = max > 0 ? (double)context.Quantidade / max * 100 : 0;
+                        }
+                        <div style="background: var(--accent-fill-rest); height: 12px; border-radius: 4px; width: @($"{pct:F0}%"); min-width: 4px;"></div>
+                    </TemplateColumn>
+                </FluentDataGrid>
+            </FluentStack>
+        </FluentCard>
+    }
+
+</FluentStack>
+
+@code {
+    [Parameter, EditorRequired]
+    public RelatorioGestorData Data { get; set; } = default!;
+
+    private static Appearance GetTaxaBadgeAppearance(double taxa) =>
+        taxa >= 70 ? Appearance.Accent : taxa >= 40 ? Appearance.Neutral : Appearance.Lightweight;
+}

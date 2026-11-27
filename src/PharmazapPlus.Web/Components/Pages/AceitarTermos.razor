@@ -1,0 +1,190 @@
+@page "/aceitar-termos"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = UserRoles.Administrador)]
+
+@using Markdig
+@using Markdig.Extensions.AutoIdentifiers
+@using PharmazapPlus.Shared.Models.Core
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+@inject ILogger<AceitarTermos> Logger
+@inject IWebHostEnvironment Env
+
+<PageTitle>Termos de Uso - Pharmazap Plus</PageTitle>
+
+<div style="display: flex; justify-content: center; align-items: flex-start; min-height: 80vh; padding: 2rem; background: var(--neutral-layer-floating);">
+    <FluentCard Style="max-width: 800px; width: 100%; padding: 2.5rem;">
+
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="12" Style="margin-bottom: 1.5rem;">
+            <div style="width: 48px; height: 48px; border-radius: 50%; background: var(--accent-fill-rest); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                <FluentIcon Icon="@(Icons.Regular.Size24.DocumentText)" Color="Color.Fill" />
+            </div>
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
+                <FluentLabel Typo="Typography.PageTitle">Termos de Uso e Política de Privacidade</FluentLabel>
+                <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.85rem;">
+                    LGPD — Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018)
+                </FluentLabel>
+            </FluentStack>
+        </FluentStack>
+
+        <div style="border-top: 1px solid var(--neutral-stroke-divider-rest); margin-bottom: 1.5rem;"></div>
+
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8"
+                     Style="padding: 0.75rem 1rem; background: var(--warning-fill-rest, #fef9c3); border-radius: 6px; margin-bottom: 1.5rem; border: 1px solid var(--warning-stroke-rest, #fde68a);">
+            <FluentIcon Icon="@(Icons.Regular.Size16.Warning)" Color="Color.Warning" />
+            <FluentLabel Style="font-size: 0.875rem; color: var(--neutral-foreground-rest);">
+                <strong>Leia atentamente.</strong> Para usar o Pharmazap Plus, você deve aceitar os Termos de Uso e a Política de Privacidade abaixo.
+                Este aceite é obrigatório apenas para o administrador da farmácia e é exigido por lei (LGPD).
+            </FluentLabel>
+        </FluentStack>
+
+        @if (_isLoading)
+        {
+            <div style="display: flex; flex-direction: column; align-items: center; gap: 1rem; padding: 3rem 0;">
+                <FluentProgressRing />
+                <FluentLabel>Carregando termos...</FluentLabel>
+            </div>
+        }
+        else
+        {
+            <!-- Scrollable terms box -->
+            <div class="markdown-body" style="max-height: 400px; overflow-y: auto; margin-bottom: 1.5rem;">
+                @((MarkupString)_htmlContent)
+            </div>
+
+            <!-- Acceptance checkbox -->
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="margin-bottom: 1.5rem;">
+                <FluentCheckbox @bind-Value="_concordo" Id="chk-concordo" />
+                <label for="chk-concordo" style="cursor: pointer; font-size: 0.9rem; color: var(--neutral-foreground-rest);">
+                    Li e concordo com os Termos de Uso e a Política de Privacidade do Pharmazap Plus.
+                </label>
+            </FluentStack>
+
+            <div style="border-top: 1px solid var(--neutral-stroke-divider-rest); margin-bottom: 1.5rem;"></div>
+
+            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12" Style="justify-content: flex-end;">
+                <FluentButton Appearance="Appearance.Stealth"
+                              Disabled="@_isSaving"
+                              @onclick="HandleRecusar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" Slot="start" Color="Color.Error" />
+                    Não Concordo — Sair
+                </FluentButton>
+
+                <FluentButton Appearance="Appearance.Accent"
+                              Disabled="@(!_concordo || _isSaving)"
+                              @onclick="HandleAceitar">
+                    @if (_isSaving)
+                    {
+                        <FluentProgressRing Style="width: 16px; height: 16px;" />
+                        <span style="margin-left: 0.5rem;">Salvando...</span>
+                    }
+                    else
+                    {
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Checkmark)" Slot="start" Color="Color.Fill" />
+                        <span>Concordo e Continuar</span>
+                    }
+                </FluentButton>
+            </FluentStack>
+        }
+
+    </FluentCard>
+</div>
+
+@code {
+    private bool _isLoading = true;
+    private bool _concordo = false;
+    private bool _isSaving = false;
+    private bool _redirecting = false;
+    private string _htmlContent = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        // If user doesn't require term acceptance, mark as redirecting to skip loading terms
+        var user = AuthService.CurrentUser;
+        if (user != null && !user.TermoAceiteRequired)
+        {
+            _redirecting = true;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        if (_redirecting)
+        {
+            Navigation.NavigateTo("/dashboard", forceLoad: false);
+            return;
+        }
+
+        try
+        {
+            var filePath = Path.Combine(Env.WebRootPath, "docs", "termos.md");
+            if (File.Exists(filePath))
+            {
+                var markdown = await File.ReadAllTextAsync(filePath);
+                _htmlContent = Markdig.Markdown.ToHtml(markdown, BuildPipeline());
+            }
+            else
+            {
+                _htmlContent = "<p>Documento de termos não encontrado. Entre em contato com o suporte.</p>";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao carregar documento de termos de uso");
+            _htmlContent = "<p>Erro ao carregar o documento. Entre em contato com o suporte.</p>";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleAceitar()
+    {
+        if (!_concordo) return;
+
+        _isSaving = true;
+        StateHasChanged();
+
+        try
+        {
+            var success = await AuthService.AceitarTermos();
+            if (success)
+            {
+                ToastService.ShowSuccess("Termos de uso aceitos. Bem-vindo ao Pharmazap Plus!");
+                Navigation.NavigateTo("/dashboard", forceLoad: false);
+            }
+            else
+            {
+                ToastService.ShowError("Não foi possível registrar o aceite. Tente novamente.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao aceitar termos");
+            ToastService.ShowError("Erro inesperado. Tente novamente.");
+        }
+        finally
+        {
+            _isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleRecusar()
+    {
+        await AuthService.Logout();
+        Navigation.NavigateTo("/login", forceLoad: false);
+    }
+
+    private static Markdig.MarkdownPipeline BuildPipeline() =>
+        new Markdig.MarkdownPipelineBuilder()
+            .UseAutoIdentifiers(AutoIdentifierOptions.GitHub)
+            .UseAdvancedExtensions()
+            .Build();
+}

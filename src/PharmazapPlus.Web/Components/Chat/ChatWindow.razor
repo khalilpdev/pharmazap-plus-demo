@@ -1,0 +1,2077 @@
+@using PharmazapPlus.Shared.Extensions
+@using PharmazapPlus.Web.Components.Pages
+@implements IAsyncDisposable
+@inject IWhatsAppClient WhatsAppClient
+@inject IPharmazapApiService PharmazapApiService
+@inject ILogger<ChatWindow> Logger
+@inject NavigationManager Navigation
+@inject IToastService ToastService
+@inject IJSRuntime JSRuntime
+
+<FluentCard Style="display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden;">
+
+    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                 Style="padding: 6px 10px; border-bottom: 1px solid var(--neutral-stroke-rest); flex-shrink: 0;">
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                      Style="flex: 1;">
+            @if (CurrentAtendimento != null)
+            {
+                <span class="chat-header__channel-icon" title="@CurrentAtendimento.Canal">
+                    <ChannelIcon Canal="@CurrentAtendimento.CanalEnum" Size="20" />
+                </span>
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="margin-left: 8px; min-width: 0; overflow: hidden; flex: 1;">
+                    <div class="chat-header__summary-row">
+                        <FluentLabel Typo="Typography.Subject"
+                                     Class="chat-header__name"
+                                     Title="@HeaderDisplayName">
+                            @HeaderDisplayName
+                        </FluentLabel>
+                        @if (CanShowInlineActions)
+                        {
+                            <div class="chat-header__actions-row">
+                                <div class="chat-header__actions">
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                  Title="Etiquetar atendimento"
+                                                  Class="chat-header__action-btn"
+                                                  @onclick="EtiquetarAtendimento">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Tag)" Slot="start" />
+                                        Etiquetar
+                                        @if (CurrentAtendimento?.EtiquetaId.HasValue == true)
+                                        {
+                                            <FluentBadge Appearance="Appearance.Accent" Style="margin-left: 4px;">✓</FluentBadge>
+                                        }
+                                    </FluentButton>
+
+                                    @if (CanShowInlineTransfer)
+                                    {
+                                        <FluentButton Appearance="Appearance.Stealth"
+                                                      Title="Transferir atendimento"
+                                                      Class="chat-header__action-btn"
+                                                      @onclick="TransferirAtendimento">
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.PeopleCommunity)" Slot="start" />
+                                            Transferir
+                                        </FluentButton>
+                                    }
+
+                                    @if (CanShowInlineVoltarPendente)
+                                    {
+                                        <FluentButton Appearance="Appearance.Stealth"
+                                                      Title="Voltar atendimento para pendente"
+                                                      Class="chat-header__action-btn"
+                                                      @onclick="@(() => OnVoltarPendenteRequested.InvokeAsync(CurrentAtendimento))">
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.ArrowUndo)" Slot="start" />
+                                            Voltar
+                                        </FluentButton>
+                                    }
+
+                                    @if (CanShowInlineEncerrar)
+                                    {
+                                        <FluentButton Appearance="Appearance.Accent"
+                                                      Title="Encerrar atendimento"
+                                                      Class="chat-header__action-btn chat-header__action-btn--danger"
+                                                      @onclick="InitiateFinalizarAtendimento">
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.CallEnd)" Slot="start" Color="Color.Fill" />
+                                            Encerrar
+                                        </FluentButton>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </FluentStack>
+            }
+            else
+            {
+                <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                             Style="padding: 16px; width: 100%;" VerticalGap="4">
+                    <FluentIcon Icon="@(Icons.Regular.Size24.Chat)" Color="Color.Lightweight" />
+                    <FluentLabel Color="Color.Lightweight">Selecione um atendimento para começar</FluentLabel>
+                </FluentStack>
+            }
+        </FluentStack>
+
+        @if (CurrentAtendimento != null)
+        {
+            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="4" VerticalAlignment="VerticalAlignment.Center">
+                @if (!IsGrupo)
+                {
+                    <FluentButton Appearance="Appearance.Stealth" Title="Informacoes do cliente"
+                                 @onclick="ToggleClienteInfo">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Info)" />
+                    </FluentButton>
+                }
+
+                @if (!IsGrupo)
+                {
+                <FluentMenu>
+                    <FluentButton Appearance="Appearance.Stealth" Title="Mais opcoes">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.MoreVertical)" />
+                    </FluentButton>
+                    @if (StatusEnum == AtendimentoStatusEnum.EmAndamento)
+                    {
+                        <FluentMenuItem @onclick="TransferirAtendimento">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.PeopleCommunity)" Slot="start" />
+                            Transferir atendimento
+                        </FluentMenuItem>
+                        @if (CanShowEncerrarInMenu)
+                        {
+                            <FluentMenuItem @onclick="InitiateFinalizarAtendimento">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.CallEnd)" Slot="start" />
+                                Encerrar atendimento
+                            </FluentMenuItem>
+                        }
+                    }
+                    <FluentMenuItem @onclick="EtiquetarAtendimento">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Tag)" Slot="start" />
+                        Etiquetar atendimento
+                    </FluentMenuItem>
+                    <FluentMenuItem @onclick="CriarAgendamento">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.CalendarAdd)" Slot="start" />
+                        Criar agendamento
+                    </FluentMenuItem>
+                    <FluentMenuItem @onclick="ExportarConversa">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.ArrowDownload)" Slot="start" />
+                        Exportar conversa
+                    </FluentMenuItem>
+                </FluentMenu>
+                }
+            </FluentStack>
+        }
+    </FluentStack>
+
+    @if (CurrentAtendimento != null)
+    {
+        <div class="chat-messages" @ref="messagesContainer">
+            @if (IsLoadingMessages)
+            {
+                <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 24px;">
+                    <FluentProgressRing />
+                </FluentStack>
+            }
+            else if (Mensagens.Any())
+            {
+                @foreach (var messageGroup in Mensagens.GroupBy(m => ToBrazilTime(m.ReceivedAt).Date))
+                {
+                    <div class="message-date-divider">
+                        <span>@messageGroup.Key.ToString("dd/MM/yyyy")</span>
+                    </div>
+
+                    @foreach (var mensagem in messageGroup.OrderBy(m => m.ReceivedAt))
+                    {
+                        @* Skip blank messages (e.g. reactions saved before the webhook fix) *@
+                        @if (IsMediaMessage(mensagem) || !string.IsNullOrEmpty(mensagem.Text))
+                        {
+                        <div class="message @(mensagem.IsFromCustomer ? "message-inbound" : "message-outbound")
+                                    @(mensagem.IsTemplate ? "message-template" : "")">
+
+                            @if (IsGrupo && mensagem.IsFromCustomer && !string.IsNullOrWhiteSpace(mensagem.SenderName))
+                            {
+                                <div class="message-sender-name">@mensagem.SenderName</div>
+                            }
+
+                             @if (IsMediaMessage(mensagem))
+                             {
+                                      <div class="message-media">
+                                      @{
+                                          var mediaUrl = GetSafeMediaUrl(mensagem.MediaUrl);
+                                          var displayUrl = GetMediaDisplayUrl(mensagem);
+                                      }
+                                     @if (string.IsNullOrEmpty(mediaUrl))
+                                     {
+                                         <FluentLabel Style="opacity: 0.8;">Mídia indisponível.</FluentLabel>
+                                     }
+                                      else if (IsImageMedia(mensagem))
+                                      {
+                                          <button type="button" class="message-media-preview-button" title="Visualizar e baixar imagem"
+                                                  @onclick="() => OpenMediaImageAsync(mensagem)">
+                                              <img src="@displayUrl"
+                                                   alt="@mensagem.MediaCaption" />
+                                          </button>
+                                      }
+                                     else if (IsVideoMedia(mensagem))
+                                     {
+                                         <video controls preload="metadata" playsinline>
+                                             <source src="@displayUrl" type="@GetMediaMimeType(mensagem, Consts.Midia.MimeVideoDefault)">
+                                         </video>
+                                     }
+                                     else if (IsAudioMedia(mensagem))
+                                     {
+                                         <audio controls preload="metadata">
+                                             <source src="@displayUrl" type="@GetMediaMimeType(mensagem, Consts.Midia.MimeAudioDefault)">
+                                         </audio>
+                                     }
+                                     else
+                                     {
+                                         var mediaFileName = GetMediaFileName(mensagem);
+                                         <FluentStack Orientation="Orientation.Horizontal"
+                                                      VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8"
+                                                      Style="padding: 8px; background: rgba(0,0,0,0.05); border-radius: 8px;">
+                                             <FluentIcon Icon="@(Icons.Regular.Size24.Document)" />
+                                              <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
+                                                  <FluentLabel Weight="FontWeight.Bold">Documento</FluentLabel>
+                                                  <FluentLabel>@mediaFileName</FluentLabel>
+                                              </FluentStack>
+                                              <FluentButton Appearance="Appearance.Stealth"
+                                                            Disabled="@_isDownloadingDocument"
+                                                            @onclick="() => DownloadDocumentAsync(mensagem)"
+                                                            class="message-media-download"
+                                                            Title="Baixar arquivo">
+                                                  @if (_isDownloadingDocument)
+                                                  {
+                                                      <FluentProgressRing Style="width: 16px; height: 16px;" />
+                                                  }
+                                                  else
+                                                  {
+                                                      <FluentIcon Icon="@(Icons.Regular.Size16.ArrowDownload)" />
+                                                  }
+                                              </FluentButton>
+                                          </FluentStack>
+                                      }
+
+                                     @if (!string.IsNullOrEmpty(mensagem.MediaCaption))
+                                     {
+                                         <div class="media-caption">@FormatMessageContent(mensagem.MediaCaption)</div>
+                                     }
+                                 </div>
+                             }
+
+                            @if (!string.IsNullOrEmpty(mensagem.Text))
+                            {
+                                <div class="message-text">
+                                    @if (mensagem.IsTemplate)
+                                     {
+                                         <FluentStack Orientation="Orientation.Horizontal"
+                                                      VerticalAlignment="VerticalAlignment.Center" HorizontalGap="4"
+                                                      Style="margin-bottom: 4px; opacity: 0.8;">
+                                            <FluentIcon Icon="@(Icons.Regular.Size12.Headphones)" />
+                                             <FluentLabel Typo="Typography.Body" Style="opacity: 0.8;">Template: @mensagem.TemplateName</FluentLabel>
+                                         </FluentStack>
+                                     }
+                                     @FormatMessageContent(mensagem.Text)
+                                 </div>
+                             }
+
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.Right"
+                                         VerticalAlignment="VerticalAlignment.Center" HorizontalGap="4"
+                                         Class="message-time"
+                                         Style="opacity: 0.8; margin-top: 4px;">
+                                <FluentLabel Typo="Typography.Body" Style="opacity: 0.8;">@ToBrazilTime(mensagem.ReceivedAt).ToString("HH:mm")</FluentLabel>
+                                @if (mensagem.IsToCustomer)
+                                {
+                                    @switch (mensagem.Status)
+                                    {
+                                        case MessageStatus.Enviada:
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.Checkmark)" Title="Enviada" />
+                                            break;
+                                        case MessageStatus.Entregue:
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.Send)" Title="Entregue" />
+                                            break;
+                                        case MessageStatus.Lida:
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.Send)" Title="Lida" />
+                                            break;
+                                        case MessageStatus.Falha:
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.DismissCircle)" Class="status-error" Title="Falha" />
+                                            break;
+                                    }
+                                }
+                            </FluentStack>
+                        </div>
+                        }
+                    }
+                }
+            }
+            else
+            {
+                <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                             VerticalAlignment="VerticalAlignment.Center" Style="flex-grow: 1;" VerticalGap="8">
+                    <FluentIcon Icon="@(Icons.Regular.Size48.Chat)" Color="Color.Lightweight" />
+                    <FluentLabel Color="Color.Lightweight">Nenhuma mensagem ainda</FluentLabel>
+                    <FluentLabel Color="Color.Lightweight">Inicie a conversa enviando uma mensagem abaixo</FluentLabel>
+                </FluentStack>
+            }
+
+            @if (IsTyping && CurrentAtendimento?.Cliente != null)
+            {
+                <div class="typing-indicator">
+                    <div class="typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                    <FluentLabel>@CurrentAtendimento.Cliente.Nome esta digitando...</FluentLabel>
+                </div>
+            }
+        </div>
+
+        @if (StatusEnum == AtendimentoStatusEnum.Finalizado)
+        {
+            <div class="finalizado-banner">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="6">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.CheckmarkCircle)" Style="color: var(--colorStatusSuccessBorderActive, #107c10);" />
+                    <FluentLabel Weight="FontWeight.Bold" Style="color: var(--colorStatusSuccessBorderActive, #107c10);">Atendimento encerrado</FluentLabel>
+                </FluentStack>
+                @if (CurrentAtendimento!.DataFim.HasValue)
+                {
+                    var dataFimBr = ToBrazilTime(CurrentAtendimento.DataFim.Value);
+                    <FluentLabel>Encerrado em @dataFimBr.ToString("dd/MM/yyyy") às @dataFimBr.ToString("HH:mm")</FluentLabel>
+                }
+                @if (!string.IsNullOrEmpty(CurrentAtendimento!.ComentarioAvaliacao))
+                {
+                    <FluentLabel>Motivo: @CurrentAtendimento.ComentarioAvaliacao</FluentLabel>
+                }
+                @if (CurrentAtendimento!.ValorVenda.HasValue)
+                {
+                    <FluentLabel>Valor da venda: @CurrentAtendimento.ValorVenda.Value.ToString("C", new System.Globalization.CultureInfo("pt-BR"))</FluentLabel>
+                }
+                @if (!string.IsNullOrEmpty(CurrentAtendimento!.ComprovanteUrl))
+                {
+                    <a href="@CurrentAtendimento.ComprovanteUrl" target="_blank" rel="noopener noreferrer"
+                       class="comprovante-link">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Image)" />
+                        Ver comprovante
+                    </a>
+                }
+            </div>
+        }
+
+        @if (IsGrupo)
+        {
+            <div class="pending-banner">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Info)" />
+                <FluentLabel Style="flex: 1;">
+                    Mensagem de grupo disponível apenas para visualização. Ela não gera cliente potencial nem entra no fluxo de atendimento.
+                </FluentLabel>
+            </div>
+        }
+        else if (StatusEnum == AtendimentoStatusEnum.Pendente)
+        {
+            <div class="pending-banner">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Info)" />
+                <FluentLabel Style="flex: 1;">
+                    @(IsGestor
+                        ? "Gestores não podem assumir atendimentos. Transfira para um atendente."
+                        : "Este atendimento ainda não foi assumido. Assuma-o para poder responder.")
+                </FluentLabel>
+                @if (!IsGestor)
+                {
+                    <FluentButton Appearance="Appearance.Accent"
+                                  @onclick="@(() => OnAssumirRequested.InvokeAsync(CurrentAtendimento))">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Headphones)" Slot="start" Color="Color.Fill" />
+                        Assumir
+                    </FluentButton>
+                }
+            </div>
+        }
+
+        @if (StatusEnum == AtendimentoStatusEnum.EmAndamento)
+        {
+            @if (!IsAssignedAttendant)
+            {
+                <div class="locked-banner">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.LockClosed)" />
+                    <FluentLabel Style="flex: 1;">
+                        @if (IsGestor)
+                        {
+                            @:Gestores não podem enviar mensagens. Transfira o atendimento para um atendente.
+                        }
+                        else
+                        {
+                            @:Este atendimento está em andamento por outro atendente. Assuma-o para poder responder.
+                        }
+                    </FluentLabel>
+                    @if (IsAdministrador)
+                    {
+                        <FluentButton Appearance="Appearance.Outline"
+                                      @onclick="@(() => OnAssumirRequested.InvokeAsync(CurrentAtendimento))">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Headphones)" Slot="start" />
+                            Assumir para mim
+                        </FluentButton>
+                    }
+                    else
+                    {
+                        <FluentButton Appearance="Appearance.Outline"
+                                      @onclick="@(() => OnTransferirRequested.InvokeAsync(CurrentAtendimento))">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.ArrowSwap)" Slot="start" />
+                            Transferir
+                        </FluentButton>
+                    }
+                </div>
+            }
+            else
+            {
+            <div class="chat-input-bar">
+                <div style="display: flex; gap: 4px; flex-shrink: 0; align-items: center;">
+                    <FluentMenu>
+                        <FluentButton Appearance="Appearance.Stealth" Title="Anexar arquivo">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Attach)" />
+                        </FluentButton>
+                        <FluentMenuItem @onclick="UploadImage">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Image)" Slot="start" />
+                            Imagem
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick="UploadDocument">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Document)" Slot="start" />
+                            Documento
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick="SendLocationRequest">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Location)" Slot="start" />
+                            Solicitar localizacao
+                        </FluentMenuItem>
+                    </FluentMenu>
+
+                    <FluentMenu>
+                        <FluentButton Appearance="Appearance.Stealth" Title="Inserir emoji">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Emoji)" />
+                        </FluentButton>
+                        <FluentMenuItem @onclick='() => InsertEmoji("😊")'>
+                            <span style="font-size: 18px;">😊</span> Smile
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick='() => InsertEmoji("👍")'>
+                            <span style="font-size: 18px;">👍</span> OK
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick='() => InsertEmoji("✅")'>
+                            <span style="font-size: 18px;">✅</span> Check
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick='() => InsertEmoji("❌")'>
+                            <span style="font-size: 18px;">❌</span> X
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick='() => InsertEmoji("❤️")'>
+                            <span style="font-size: 18px;">❤️</span> Heart
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick='() => InsertEmoji("🙏")'>
+                            <span style="font-size: 18px;">🙏</span> Thanks
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick='() => InsertEmoji("💊")'>
+                            <span style="font-size: 18px;">💊</span> Medicine
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick='() => InsertEmoji("🧬")'>
+                            <span style="font-size: 18px;">🧬</span> RX
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick='() => InsertEmoji("📍")'>
+                            <span style="font-size: 18px;">📍</span> Location
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick='() => InsertEmoji("📷")'>
+                            <span style="font-size: 18px;">📷</span> Camera
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick='() => InsertEmoji("💰")'>
+                            <span style="font-size: 18px;">💰</span> Money
+                        </FluentMenuItem>
+                        <FluentMenuItem @onclick='() => InsertEmoji("⏰")'>
+                            <span style="font-size: 18px;">⏰</span> Time
+                        </FluentMenuItem>
+                    </FluentMenu>
+                </div>
+
+                <FluentTextField @key="@_messageInputRenderKey"
+                                @ref="messageInput"
+                                @bind-Value="MessageText"
+                                Immediate="true"
+                                Placeholder="Digite sua mensagem..."
+                                Style="flex: 1; min-width: 0;"
+                                @onkeypress="HandleKeyPress">
+                </FluentTextField>
+
+                <FluentButton Appearance="Appearance.Stealth"
+                             Title="Mensagens pré-definidas"
+                             Style="flex-shrink: 0; align-self: center; color: #f0a500;"
+                             @onclick="OpenMensagensPreDefinidas">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Flash)" Style="color: #f0a500;" />
+                </FluentButton>
+
+                <FluentButton Appearance="Appearance.Accent"
+                             Title="Enviar mensagem"
+                             Disabled="@(!CanSendMessage || IsSending)"
+                             Style="flex-shrink: 0; align-self: center;"
+                             @onclick="SendMessage">
+                    @if (IsSending)
+                    {
+                        <FluentProgressRing Style="width: 16px; height: 16px;" />
+                    }
+                    else
+                    {
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Send)" Color="Color.Fill" />
+                    }
+                </FluentButton>
+            </div>
+            }
+        }
+
+        @if (ShowClienteInfo && CurrentAtendimento?.Cliente != null)
+        {
+            <FluentCard Class="cliente-info-panel">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                             Style="padding: 12px 16px; border-bottom: 1px solid var(--neutral-stroke-rest); flex-shrink: 0;">
+                    <FluentLabel Typo="Typography.Subject" Style="flex: 1;">Informações do Cliente</FluentLabel>
+                    <FluentButton Appearance="Appearance.Stealth" @onclick="ToggleClienteInfo">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                    </FluentButton>
+                </FluentStack>
+
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16"
+                             Style="padding: 16px; overflow-y: auto; flex-grow: 1;">
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                        <FluentLabel Weight="FontWeight.Bold">Contato</FluentLabel>
+                        <FluentLabel><strong>@(CurrentAtendimento.CanalEnum.ToString()):</strong> @CurrentAtendimento.Cliente.WhatsAppId.FormatContactId(CurrentAtendimento.CanalEnum)</FluentLabel>
+                        <FluentLabel><strong>Telefone:</strong> @CurrentAtendimento.Cliente.Telefone.FormatTelefone()</FluentLabel>
+                        <FluentLabel><strong>Email:</strong> @CurrentAtendimento.Cliente.Email</FluentLabel>
+                    </FluentStack>
+
+                    @if (!string.IsNullOrEmpty(CurrentAtendimento.Cliente.Endereco))
+                    {
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                            <FluentLabel Weight="FontWeight.Bold">Endereco</FluentLabel>
+                            <FluentLabel>@CurrentAtendimento.Cliente.Endereco</FluentLabel>
+                            <FluentLabel>@CurrentAtendimento.Cliente.Cidade - @CurrentAtendimento.Cliente.Estado</FluentLabel>
+                            <FluentLabel>CEP: @CurrentAtendimento.Cliente.Cep</FluentLabel>
+                        </FluentStack>
+                    }
+
+                    @if (CurrentAtendimento.Cliente.UsoContinuo)
+                    {
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                            <FluentLabel Weight="FontWeight.Bold">Medicamentos Continuos</FluentLabel>
+                            <FluentLabel>@CurrentAtendimento.Cliente.MedicamentosContinuos</FluentLabel>
+                        </FluentStack>
+                    }
+
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                        <FluentLabel Weight="FontWeight.Bold">Estatisticas</FluentLabel>
+                        <FluentLabel><strong>Total de atendimentos:</strong> @CurrentAtendimento.Cliente.TotalAtendimentos</FluentLabel>
+                        <FluentLabel><strong>Ultimo contato:</strong> @CurrentAtendimento.Cliente.UltimoContato?.ToString("dd/MM/yyyy HH:mm")</FluentLabel>
+                        <FluentLabel><strong>Data de cadastro:</strong> @CurrentAtendimento.Cliente.DataCadastro.ToString("dd/MM/yyyy")</FluentLabel>
+                    </FluentStack>
+
+                    @if (StatusEnum == AtendimentoStatusEnum.Finalizado)
+                    {
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="4"
+                                     Style="padding: 10px 12px; background: var(--colorStatusSuccessBackground2, rgba(0,128,0,0.08)); border-left: 3px solid var(--colorStatusSuccessBorderActive, #107c10); border-radius: 4px;">
+                            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="6">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.CheckmarkCircle)" Style="color: var(--colorStatusSuccessBorderActive, #107c10);" />
+                                <FluentLabel Weight="FontWeight.Bold" Style="color: var(--colorStatusSuccessBorderActive, #107c10);">Encerramento</FluentLabel>
+                            </FluentStack>
+                            @if (CurrentAtendimento.DataFim.HasValue)
+                            {
+                                <FluentLabel><strong>Data/hora:</strong> @ToBrazilTime(CurrentAtendimento.DataFim.Value).ToString("dd/MM/yyyy HH:mm")</FluentLabel>
+                            }
+                            @if (!string.IsNullOrEmpty(CurrentAtendimento.ComentarioAvaliacao))
+                            {
+                                <FluentLabel><strong>Motivo:</strong> @CurrentAtendimento.ComentarioAvaliacao</FluentLabel>
+                            }
+                            @if (CurrentAtendimento.ValorVenda.HasValue)
+                            {
+                                <FluentLabel><strong>Valor da venda:</strong> @CurrentAtendimento.ValorVenda.Value.ToString("C", new System.Globalization.CultureInfo("pt-BR"))</FluentLabel>
+                            }
+                            @if (!string.IsNullOrEmpty(CurrentAtendimento.ComprovanteUrl))
+                            {
+                                <a href="@CurrentAtendimento.ComprovanteUrl" target="_blank" rel="noopener noreferrer"
+                                   class="comprovante-link">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Image)" />
+                                    Ver comprovante
+                                </a>
+                            }
+                        </FluentStack>
+                    }
+
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                        <FluentButton Appearance="Appearance.Outline" @onclick="EditarCliente">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Edit)" Slot="start" />
+                            Editar Cliente
+                        </FluentButton>
+                        <FluentButton Appearance="Appearance.Outline" @onclick="VerHistorico">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.History)" Slot="start" />
+                            Ver histórico completo
+                        </FluentButton>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+        }
+    }
+</FluentCard>
+
+<ClienteFormDialog Visible="@_showClienteFormDialog"
+                   VisibleChanged="@OnClienteFormVisibleChanged"
+                   Cliente="@_editingCliente"
+                   OnSave="@HandleClienteFormSave" />
+
+<!-- Mensagens pré-definidas dialog -->
+<FluentDialog @ref="_mensagensPreDefDialog"
+              Hidden="@(!_showMensagensPreDef)"
+              @ondialogdismiss="CloseMensagensPreDefinidas"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="width: 480px;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size20.Flash)" Style="color: #f0a500;" />
+                <FluentLabel Typo="Typography.Subject">Mensagens Pré-Definidas</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseMensagensPreDefinidas" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        @if (_isLoadingMensagensPreDef)
+        {
+            <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 2rem;">
+                <FluentProgressRing />
+            </FluentStack>
+        }
+        else if (!_mensagensPreDef.Any())
+        {
+            <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                         VerticalGap="8" Style="padding: 2rem;">
+                <FluentIcon Icon="@(Icons.Regular.Size24.ChatMultiple)" Style="color: var(--neutral-foreground-hint);" />
+                <FluentLabel Style="color: var(--neutral-foreground-hint); text-align: center;">
+                    Nenhuma mensagem pré-definida cadastrada.<br />
+                    Acesse <strong>Configurações &gt; Mensagens Pré-Definidas</strong> para criar.
+                </FluentLabel>
+            </FluentStack>
+        }
+        else
+        {
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="8" Style="padding: 0.5rem 0;">
+                @foreach (var msg in _mensagensPreDef.OrderBy(m => m.Ordem).ThenBy(m => m.Titulo))
+                {
+                    <div style="padding: 12px; border: 1px solid var(--neutral-stroke-rest); border-radius: 6px; cursor: pointer; transition: background 0.15s;"
+                         @onclick="@(() => SelectMensagemPreDefinida(msg))"
+                         @onmouseover="@(e => {})"
+                         title="Clique para usar esta mensagem">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                            <FluentLabel Weight="FontWeight.Bold" Style="font-size: 0.875rem;">@msg.Titulo</FluentLabel>
+                            <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.8rem; white-space: pre-wrap; word-break: break-word;">@msg.Texto</FluentLabel>
+                        </FluentStack>
+                    </div>
+                }
+            </FluentStack>
+        }
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseMensagensPreDefinidas">
+            Fechar
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Encerramento reason dialog -->
+<FluentDialog @ref="_encerramentoDialog"
+              Hidden="@(!_showEncerramentoDialog)"
+              @ondialogdismiss="CancelEncerramento"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="width: 440px;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size20.CallEnd)" Color="Color.Error" />
+                <FluentLabel Typo="Typography.Subject">Encerrar atendimento</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CancelEncerramento" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="overflow: visible; position: relative; z-index: 30;">
+            @if (_isLoadingMotivos)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                    <FluentProgressRing Style="width: 16px; height: 16px;" />
+                    <FluentLabel>Carregando motivos...</FluentLabel>
+                </FluentStack>
+            }
+            else
+            {
+                <FluentLabel>Selecione o motivo do encerramento:</FluentLabel>
+                <div style="position: relative; z-index: 30; overflow: visible;">
+                    <FluentSelect TOption="string"
+                                  Value="@_motivoEncerramentoIdStr"
+                                  ValueChanged="@OnMotivoChanged"
+                                  Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                        <FluentOption TOption="string" Value="">Selecione um motivo...</FluentOption>
+                        @foreach (var motivo in _motivosDisponiveis)
+                        {
+                            <FluentOption TOption="string" Value="@motivo.Id.ToString()">@motivo.Nome</FluentOption>
+                        }
+                    </FluentSelect>
+                </div>
+
+                @if (_selectedMotivo?.ExigeValorVenda == true)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                        <FluentLabel>Valor da venda *:</FluentLabel>
+                        <FluentTextField Value="@_valorVendaStr"
+                                         ValueChanged="@OnValorVendaInput"
+                                         Immediate="true"
+                                         Placeholder="R$ 0,00"
+                                         Style="width: 100%;"
+                                         MaxLength="15" />
+                        <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.75rem;">
+                            Obrigatório: informe o valor da venda realizada neste atendimento.
+                        </FluentLabel>
+                    </FluentStack>
+                }
+                else
+                {
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                        <FluentLabel>Valor da venda (opcional):</FluentLabel>
+                        <FluentTextField Value="@_valorVendaStr"
+                                         ValueChanged="@OnValorVendaInput"
+                                         Immediate="true"
+                                         Placeholder="R$ 0,00"
+                                         Style="width: 100%;"
+                                         MaxLength="15" />
+                        <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.75rem;">
+                            Informe o valor da venda realizada neste atendimento, se houver.
+                        </FluentLabel>
+                    </FluentStack>
+                }
+
+                @if (_selectedMotivo?.ExigeComprovante == true)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                        <FluentLabel>Comprovante (imagem) *:</FluentLabel>
+                        <InputFile OnChange="HandleComprovanteUpload" accept="image/*" style="width: 100%;" />
+                        @if (_comprovanteFile != null)
+                        {
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.Image)" />
+                                <FluentLabel>@_comprovanteFile.Name (@((_comprovanteFile.Size / 1024).ToString("N0")) KB)</FluentLabel>
+                                <FluentButton Appearance="Appearance.Stealth" @onclick="ClearComprovante" Title="Remover">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                                </FluentButton>
+                            </FluentStack>
+                        }
+                        <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.75rem;">
+                            Obrigatório: anexe uma imagem de comprovante (pedido, cupom fiscal, etc.). Máx: 10MB.
+                        </FluentLabel>
+                    </FluentStack>
+                }
+            }
+            @if (!string.IsNullOrEmpty(_encerramentoError))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_encerramentoError</FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CancelEncerramento" Disabled="@_isFinalizando">
+            Cancelar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      @onclick="ConfirmEncerramento"
+                      Disabled="@(string.IsNullOrEmpty(_motivoEncerramentoIdStr) || _isFinalizando)">
+            @if (_isFinalizando)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px;" />
+                <span style="margin-left: 0.5rem;">Encerrando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.CallEnd)" Slot="start" Color="Color.Fill" />
+                <span>Encerrar</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Preview de imagem -->
+<FluentDialog Hidden="@(!_showImagePreviewDialog)"
+              @ondialogdismiss="CloseImagePreview"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="width: min(92vw, 760px);">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentLabel Typo="Typography.Subject">Preview da imagem</FluentLabel>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseImagePreview" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        @if (_isLoadingImagePreview)
+        {
+            <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 2rem;">
+                <FluentProgressRing />
+            </FluentStack>
+        }
+        else if (!string.IsNullOrWhiteSpace(_imagePreviewDataUrl))
+        {
+            <div class="chat-image-preview-container">
+                <img src="@_imagePreviewDataUrl" alt="Preview da imagem" class="chat-image-preview" />
+            </div>
+        }
+        else
+        {
+            <FluentLabel>@_imagePreviewError</FluentLabel>
+        }
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseImagePreview">
+            Fechar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      Disabled="@(_imagePreviewBytes is null || _isDownloadingImagePreview)"
+                      @onclick="DownloadImagePreviewAsync">
+            @if (_isDownloadingImagePreview)
+            {
+                <FluentProgressRing Style="width: 16px; height: 16px;" />
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.ArrowDownload)" Slot="start" Color="Color.Fill" />
+                <span>Baixar imagem</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter] public Atendimento? CurrentAtendimento { get; set; }
+    [Parameter] public EventCallback<Atendimento> OnAtendimentoFinalizado { get; set; }
+    [Parameter] public EventCallback<Atendimento> OnEtiquetar { get; set; }
+    [Parameter] public EventCallback<Atendimento> OnAssumirRequested { get; set; }
+    [Parameter] public EventCallback<Atendimento> OnTransferirRequested { get; set; }
+    [Parameter] public EventCallback<Atendimento> OnVoltarPendenteRequested { get; set; }
+    [Parameter] public EventCallback OnClienteUpdated { get; set; }
+
+    /// <summary>ID do usuário logado (string, como vem do UserInfo.Id).</summary>
+    [Parameter] public string? CurrentUserId { get; set; }
+
+    /// <summary>Role do usuário logado (UserRoles.Gestor / Administrador / Atendente).</summary>
+    [Parameter] public string? CurrentUserRole { get; set; }
+
+    private ElementReference messagesContainer;
+    private FluentTextField? messageInput;
+    private int _messageInputRenderKey = 0;
+
+    private List<Mensagem> Mensagens = new();
+    private string MessageText = "";
+    private bool IsLoadingMessages = false;
+    private bool IsSending = false;
+    private bool IsTyping = false;
+    private bool ShowClienteInfo = false;
+    private bool _showClienteFormDialog;
+    private Cliente? _editingCliente;
+    private int? _lastAtendimentoId;
+    private string? _lastAtendimentoStatus;
+    private Atendimento? _lastAtendimentoRef;
+
+    // Encerramento dialog state
+    private FluentDialog? _encerramentoDialog;
+    private bool _showEncerramentoDialog;
+    private string _motivoEncerramentoIdStr = "";
+    private MotivoEncerramentoDto? _selectedMotivo;
+    private List<MotivoEncerramentoDto> _motivosDisponiveis = new();
+    private bool _isLoadingMotivos;
+    private string _valorVendaStr = "";
+    private IBrowserFile? _comprovanteFile;
+    private bool _isFinalizando;
+    private string _encerramentoError = "";
+
+    // Mensagens pré-definidas dialog state
+    private FluentDialog? _mensagensPreDefDialog;
+    private bool _showMensagensPreDef;
+    private List<MensagemPreDefinidaDto> _mensagensPreDef = new();
+    private bool _isLoadingMensagensPreDef;
+
+    // Preview de imagem
+    private bool _showImagePreviewDialog;
+    private bool _isLoadingImagePreview;
+    private bool _isDownloadingImagePreview;
+    private byte[]? _imagePreviewBytes;
+    private string? _imagePreviewContentType;
+    private string? _imagePreviewDataUrl;
+    private string _imagePreviewFileName = "imagem.jpg";
+    private string _imagePreviewError = "Não foi possível carregar a imagem.";
+
+    // Download de documento (server-side, para resolver Content-Type/extensão correta
+    // e evitar download cross-origin do blob criptografado do CDN como `file.enc`).
+    private bool _isDownloadingDocument;
+
+    private AtendimentoStatusEnum StatusEnum =>
+        Enum.TryParse<AtendimentoStatusEnum>(CurrentAtendimento?.Status, out var s) ? s : AtendimentoStatusEnum.Pendente;
+
+    private bool IsGrupo => CurrentAtendimento?.IsGrupo == true;
+
+    private bool IsGestor =>
+        string.Equals(CurrentUserRole, UserRoles.Gestor, StringComparison.OrdinalIgnoreCase);
+
+    private bool IsAdministrador =>
+        string.Equals(CurrentUserRole, UserRoles.Administrador, StringComparison.OrdinalIgnoreCase);
+
+    private bool IsAtendente =>
+        string.Equals(CurrentUserRole, UserRoles.Atendente, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Verdadeiro quando o usuário logado é o atendente atribuído ao atendimento atual.
+    /// Gestor NUNCA é considerado atendente atribuído.
+    /// Administrador e Atendente só podem enviar se o AtendenteId do atendimento for o seu.
+    /// </summary>
+    private bool IsAssignedAttendant =>
+        !IsGestor &&
+        !IsGrupo &&
+        int.TryParse(CurrentUserId, out var uid) &&
+        CurrentAtendimento?.AtendenteId == uid;
+
+    private bool CanSendMessage => !string.IsNullOrWhiteSpace(MessageText) &&
+                                    CurrentAtendimento != null &&
+                                    !IsGrupo &&
+                                    StatusEnum == AtendimentoStatusEnum.EmAndamento &&
+                                    IsAssignedAttendant &&
+                                    !IsSending;
+
+    private bool CanShowInlineActions =>
+        CurrentAtendimento != null &&
+        !IsGrupo &&
+        StatusEnum == AtendimentoStatusEnum.EmAndamento &&
+        IsAssignedAttendant;
+
+    private bool CanShowInlineTransfer => CanShowInlineActions && IsAdministrador;
+
+    private bool CanShowInlineVoltarPendente => CanShowInlineActions && IsAtendente;
+
+    private bool CanShowInlineEncerrar => CanShowInlineActions && IsAdministrador;
+
+    private bool CanShowEncerrarInMenu => CanShowInlineActions && IsAtendente;
+
+    private string HeaderDisplayName =>
+        IsGrupo
+            ? (string.IsNullOrWhiteSpace(CurrentAtendimento?.GrupoNome) ? "Grupo WhatsApp" : CurrentAtendimento.GrupoNome)
+            : CurrentAtendimento?.Cliente?.Nome
+                ?? CurrentAtendimento?.WhatsAppId.FormatContactId(CurrentAtendimento?.CanalEnum ?? CanalEnum.WhatsApp)
+                ?? "Desconhecido";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CurrentAtendimento != null)
+        {
+            UpdateLastAtendimentoState();
+            await LoadMessages();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var idChanged = CurrentAtendimento?.Id != _lastAtendimentoId;
+        var statusChanged = CurrentAtendimento?.Status != _lastAtendimentoStatus;
+        var referenceChanged = !ReferenceEquals(CurrentAtendimento, _lastAtendimentoRef);
+
+        if (idChanged || statusChanged || referenceChanged)
+        {
+            UpdateLastAtendimentoState();
+
+            if (CurrentAtendimento != null)
+            {
+                await LoadMessages();
+            }
+            else
+            {
+                Mensagens.Clear();
+            }
+        }
+    }
+
+    private void UpdateLastAtendimentoState()
+    {
+        _lastAtendimentoId = CurrentAtendimento?.Id;
+        _lastAtendimentoStatus = CurrentAtendimento?.Status;
+        _lastAtendimentoRef = CurrentAtendimento;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (CurrentAtendimento != null && Mensagens.Any())
+        {
+            await ScrollToBottom();
+        }
+    }
+
+    private async Task LoadMessages()
+    {
+        IsLoadingMessages = true;
+        StateHasChanged();
+
+        try
+        {
+            if (CurrentAtendimento != null)
+            {
+                var messages = await PharmazapApiService.GetMensagensAtendimentoAsync(CurrentAtendimento.Id);
+                Mensagens = messages.OrderBy(m => m.ReceivedAt).ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Erro ao carregar mensagens do atendimento {CurrentAtendimento?.Id} [{ex.Message}]");
+            ToastService.ShowError("Não foi possível carregar as mensagens. Tente novamente em instantes.");
+        }
+        finally
+        {
+            IsLoadingMessages = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (!CanSendMessage) return;
+
+        IsSending = true;
+        var text = MessageText.Trim();
+        MessageText = "";
+        _messageInputRenderKey++;
+        StateHasChanged();
+        await Task.Yield();
+
+        try
+        {
+            if (CurrentAtendimento != null)
+            {
+                var (success, message) = await PharmazapApiService.EnviarMensagemAsync(CurrentAtendimento.Id, text);
+                if (success)
+                {
+                    await LoadMessages();
+                    ToastService.ShowSuccess("Mensagem enviada com sucesso!");
+                }
+                else
+                {
+                    Logger.LogWarning("Failed to send message in atendimento {Id}", CurrentAtendimento.Id);
+                    MessageText = text; // Restore text on failure
+                    ToastService.ShowError(message);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error sending message");
+            MessageText = text; // Restore text on exception
+        }
+        finally
+        {
+            IsSending = false;
+            StateHasChanged();
+            if (messageInput != null)
+            {
+                messageInput.FocusAsync();
+            }
+        }
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !IsSending)
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task InitiateFinalizarAtendimento()
+    {
+        _motivoEncerramentoIdStr = "";
+        _selectedMotivo = null;
+        _valorVendaStr = "";
+        _comprovanteFile = null;
+        _encerramentoError = "";
+        _showEncerramentoDialog = true;
+        _isLoadingMotivos = true;
+        StateHasChanged();
+
+        try
+        {
+            _motivosDisponiveis = await PharmazapApiService.GetMotivosEncerramentoAsync(ativo: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading motivos encerramento");
+            _motivosDisponiveis = new();
+        }
+        finally
+        {
+            _isLoadingMotivos = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OnMotivoChanged(string value)
+    {
+        _motivoEncerramentoIdStr = value;
+        _selectedMotivo = int.TryParse(value, out var id)
+            ? _motivosDisponiveis.FirstOrDefault(m => m.Id == id)
+            : null;
+
+        // Clear comprovante if motivo doesn't require it
+        if (_selectedMotivo?.ExigeComprovante != true)
+            _comprovanteFile = null;
+    }
+
+    private void HandleComprovanteUpload(InputFileChangeEventArgs e)
+    {
+        _comprovanteFile = e.File;
+        _encerramentoError = "";
+    }
+
+    private void ClearComprovante()
+    {
+        _comprovanteFile = null;
+    }
+
+    private void CancelEncerramento()
+    {
+        _showEncerramentoDialog = false;
+        _motivoEncerramentoIdStr = "";
+        _selectedMotivo = null;
+        _valorVendaStr = "";
+        _comprovanteFile = null;
+        _encerramentoError = "";
+    }
+
+    private async Task ConfirmEncerramento()
+    {
+        if (string.IsNullOrEmpty(_motivoEncerramentoIdStr)) return;
+        if (CurrentAtendimento == null) return;
+        if (_selectedMotivo == null) return;
+
+        // Client-side validation based on motivo rules
+        var valorVenda = ParseValorMonetario(_valorVendaStr);
+
+        if (_selectedMotivo.ExigeValorVenda && valorVenda <= 0)
+        {
+            _encerramentoError = "O motivo selecionado exige que o valor da venda seja informado.";
+            return;
+        }
+
+        if (_selectedMotivo.ExigeComprovante && _comprovanteFile == null)
+        {
+            _encerramentoError = "O motivo selecionado exige que um comprovante (imagem) seja anexado.";
+            return;
+        }
+
+        _isFinalizando = true;
+        _encerramentoError = "";
+
+        try
+        {
+            // Upload comprovante if provided
+            string? comprovanteUrl = null;
+            if (_comprovanteFile != null)
+            {
+                using var stream = _comprovanteFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+                var (uploadSuccess, url, uploadMessage) = await PharmazapApiService.UploadComprovanteAsync(
+                    CurrentAtendimento.Id, stream, _comprovanteFile.Name, _comprovanteFile.ContentType);
+
+                if (!uploadSuccess)
+                {
+                    _encerramentoError = $"Erro ao enviar comprovante: {uploadMessage}";
+                    return;
+                }
+                comprovanteUrl = url;
+            }
+
+            var (success, message) = await PharmazapApiService.FinalizarAtendimentoAsync(
+                CurrentAtendimento.Id,
+                motivo: _selectedMotivo.Nome,
+                valorVenda: valorVenda > 0 ? valorVenda : null,
+                motivoEncerramentoId: _selectedMotivo.Id,
+                comprovanteUrl: comprovanteUrl);
+
+            if (success)
+            {
+                _showEncerramentoDialog = false;
+                ToastService.ShowSuccess("Atendimento encerrado com sucesso.");
+                CurrentAtendimento.Finalizar();
+                UpdateLastAtendimentoState();
+                var atendimento = CurrentAtendimento;
+                CurrentAtendimento = default;
+                await OnAtendimentoFinalizado.InvokeAsync(atendimento);
+            }
+            else
+            {
+                Logger.LogWarning("Falha ao finalizar atendimento {Id}: {Message}", CurrentAtendimento.Id, message);
+                _encerramentoError = message;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Erro ao finalizar atendimento {CurrentAtendimento?.Id} [{ex.Message}]");
+            _encerramentoError = "Erro ao encerrar atendimento. Tente novamente.";
+            ToastService.ShowError("Erro ao encerrar atendimento. Tente novamente.");
+        }
+        finally
+        {
+            _isFinalizando = false;
+        }
+    }
+
+    private void ToggleClienteInfo() => ShowClienteInfo = !ShowClienteInfo;
+
+    private async Task OpenMensagensPreDefinidas()
+    {
+        _showMensagensPreDef = true;
+        _isLoadingMensagensPreDef = true;
+        StateHasChanged();
+        try
+        {
+            _mensagensPreDef = await PharmazapApiService.GetMensagensPreDefinidasAsync(ativo: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading mensagens pré-definidas");
+            ToastService.ShowError("Erro ao carregar mensagens pré-definidas.");
+        }
+        finally
+        {
+            _isLoadingMensagensPreDef = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectMensagemPreDefinida(MensagemPreDefinidaDto mensagem)
+    {
+        MessageText = mensagem.Texto;
+        _showMensagensPreDef = false;
+        StateHasChanged();
+        await SendMessage();
+    }
+
+    private void CloseMensagensPreDefinidas()
+    {
+        _showMensagensPreDef = false;
+        StateHasChanged();
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try
+        {
+            await Task.CompletedTask;
+        }
+        catch { }
+    }
+
+    private async Task UploadImage() { await Task.CompletedTask; }
+    private void InsertEmoji(string emoji)
+    {
+        MessageText = (MessageText ?? "") + emoji;
+    }
+
+    private async Task TransferirAtendimento()
+    {
+        if (CurrentAtendimento != null)
+        {
+            await OnTransferirRequested.InvokeAsync(CurrentAtendimento);
+        }
+    }
+
+    private async Task EtiquetarAtendimento()
+    {
+        if (CurrentAtendimento != null)
+            await OnEtiquetar.InvokeAsync(CurrentAtendimento);
+    }
+
+    private async Task OpenMediaImageAsync(Mensagem mensagem)
+    {
+        var mediaUrl = GetSafeMediaUrl(mensagem.MediaUrl);
+        if (string.IsNullOrWhiteSpace(mediaUrl))
+        {
+            ToastService.ShowError("A imagem não possui uma URL válida.");
+            return;
+        }
+
+        _showImagePreviewDialog = true;
+        _isLoadingImagePreview = true;
+        _imagePreviewError = "Não foi possível carregar a imagem.";
+        _imagePreviewBytes = null;
+        _imagePreviewDataUrl = null;
+        StateHasChanged();
+
+        try
+        {
+            var (success, content, contentType, message) = await PharmazapApiService.DownloadMediaAsync(mediaUrl, mensagem.MediaType);
+            if (!success || content is null || content.Length == 0)
+            {
+                _imagePreviewError = string.IsNullOrWhiteSpace(message)
+                    ? "Não foi possível baixar a imagem."
+                    : message;
+                return;
+            }
+
+            var resolvedContentType = !string.IsNullOrWhiteSpace(contentType) ? contentType : "image/jpeg";
+            if (!IsAllowedImageContentType(resolvedContentType))
+            {
+                _imagePreviewError = "Tipo de conteúdo da imagem não permitido.";
+                return;
+            }
+
+            _imagePreviewBytes = content;
+            _imagePreviewContentType = resolvedContentType;
+            _imagePreviewDataUrl = $"data:{_imagePreviewContentType};base64,{Convert.ToBase64String(content)}";
+            _imagePreviewFileName = BuildMediaFileName(mensagem, _imagePreviewContentType);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao carregar preview da imagem");
+            _imagePreviewError = "Erro ao carregar a imagem.";
+        }
+        finally
+        {
+            _isLoadingImagePreview = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadImagePreviewAsync()
+    {
+        if (_imagePreviewBytes is null || _imagePreviewBytes.Length == 0)
+            return;
+
+        _isDownloadingImagePreview = true;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync(
+                "relatoriosInterop.downloadFileFromBytes",
+                _imagePreviewFileName,
+                _imagePreviewContentType ?? "image/jpeg",
+                _imagePreviewBytes);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao baixar imagem");
+            ToastService.ShowError("Não foi possível baixar a imagem.");
+        }
+        finally
+        {
+            _isDownloadingImagePreview = false;
+        }
+    }
+
+    private void CloseImagePreview()
+    {
+        _showImagePreviewDialog = false;
+        _isLoadingImagePreview = false;
+        _isDownloadingImagePreview = false;
+        _imagePreviewBytes = null;
+        _imagePreviewContentType = null;
+        _imagePreviewDataUrl = null;
+    }
+
+    /// <summary>
+    /// Baixa um documento via servidor (API) com Content-Type real, resolve nome/extensão
+    /// corretos e dispara o download no navegador via JS interop. Substitui o link direto
+    /// &lt;a href=&quot;...&quot; download&gt; que (1) é ignorado pelo browser em URLs cross-origin
+    /// e (2) baixa o blob criptografado (file.enc) quando o MediaUrl ainda aponta para o
+    /// CDN do WhatsApp.
+    /// </summary>
+    private async Task DownloadDocumentAsync(Mensagem mensagem)
+    {
+        if (_isDownloadingDocument) return;
+
+        var mediaUrl = GetSafeMediaUrl(mensagem.MediaUrl);
+        if (string.IsNullOrWhiteSpace(mediaUrl))
+        {
+            ToastService.ShowError("O documento não possui uma URL válida.");
+            return;
+        }
+
+        _isDownloadingDocument = true;
+        try
+        {
+            var (success, content, contentType, message) = await PharmazapApiService.DownloadMediaAsync(mediaUrl, mensagem.MediaType);
+            if (!success || content is null || content.Length == 0)
+            {
+                ToastService.ShowError(string.IsNullOrWhiteSpace(message)
+                    ? "Não foi possível baixar o documento."
+                    : message);
+                return;
+            }
+
+            // When the stored file has no recognised MIME (application/octet-stream or .bin),
+            // use the MediaType field stored on the message (MIME hint from the original webhook)
+            // so the file gets the correct extension (e.g. .pdf instead of .bin).
+            var resolvedContentType = !string.IsNullOrWhiteSpace(contentType)
+                ? contentType
+                : (mensagem.MediaType ?? "application/octet-stream");
+
+            var fileName = BuildMediaFileName(mensagem, resolvedContentType);
+
+            await JSRuntime.InvokeVoidAsync(
+                "relatoriosInterop.downloadFileFromBytes",
+                fileName,
+                resolvedContentType,
+                content);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao baixar documento");
+            ToastService.ShowError("Não foi possível baixar o documento.");
+        }
+        finally
+        {
+            _isDownloadingDocument = false;
+        }
+    }
+
+    private void CriarAgendamento() { }
+    private void ExportarConversa() { }
+    private void UploadDocument() { }
+    private void SendLocationRequest() { }
+
+    private void EditarCliente()
+    {
+        if (CurrentAtendimento?.Cliente == null)
+        {
+            ToastService.ShowWarning("Cliente não disponível para edição.");
+            return;
+        }
+
+        _editingCliente = CurrentAtendimento.Cliente;
+        _showClienteFormDialog = true;
+    }
+
+    private async Task OnClienteFormVisibleChanged(bool visible)
+    {
+        _showClienteFormDialog = visible;
+        if (!visible)
+            _editingCliente = null;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleClienteFormSave((bool IsNew, CreateClienteDto? Create, UpdateClienteDto? Update) args)
+    {
+        if (args.IsNew)
+        {
+            Logger.LogWarning("Fluxo de criação de cliente não é suportado em ChatWindow.");
+            ToastService.ShowWarning("Este fluxo permite apenas editar clientes existentes.");
+            return;
+        }
+
+        if (args.Update == null || _editingCliente == null)
+        {
+            _showClienteFormDialog = false;
+            _editingCliente = null;
+            return;
+        }
+
+        var (success, message) = await PharmazapApiService.UpdateClienteAsync(_editingCliente.Id, args.Update);
+        if (!success)
+        {
+            ToastService.ShowError($"Erro ao atualizar cliente: {message}");
+            return;
+        }
+
+        ToastService.ShowSuccess("Cliente atualizado com sucesso!");
+        _showClienteFormDialog = false;
+        _editingCliente = null;
+        if (OnClienteUpdated.HasDelegate)
+            await OnClienteUpdated.InvokeAsync();
+    }
+
+    private async Task VerHistorico()
+    {
+        if (CurrentAtendimento?.ClienteId is not int clienteId || clienteId <= 0)
+        {
+            ToastService.ShowWarning("Cliente não identificado para abrir histórico.");
+            return;
+        }
+
+        var nomeCliente = CurrentAtendimento.Cliente?.Nome;
+        var targetUrl = $"/clientes/{clienteId}/historico";
+        if (!string.IsNullOrWhiteSpace(nomeCliente))
+            targetUrl += $"?nome={Uri.EscapeDataString(nomeCliente)}";
+
+        await JSRuntime.InvokeVoidAsync("open", targetUrl, "_blank");
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    private static readonly TimeZoneInfo BrazilTimeZone = ResolveBrazilTimeZone();
+
+    private static TimeZoneInfo ResolveBrazilTimeZone()
+    {
+        try { return TimeZoneInfo.FindSystemTimeZoneById("E. South America Standard Time"); }
+        catch (TimeZoneNotFoundException) { return TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo"); }
+    }
+
+    private static DateTime ToBrazilTime(DateTime dateTime)
+    {
+        var utc = dateTime.Kind switch
+        {
+            DateTimeKind.Utc => dateTime,
+            DateTimeKind.Local => dateTime.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dateTime, DateTimeKind.Utc)
+        };
+        return TimeZoneInfo.ConvertTimeFromUtc(utc, BrazilTimeZone);
+    }
+
+    /// <summary>
+    /// Atualiza o texto digitado no campo de valor da venda.
+    /// </summary>
+    private void OnValorVendaInput(string? value)
+    {
+        _valorVendaStr = value.FormatBrCurrencyInput();
+    }
+
+    /// <summary>
+    /// Interpreta o valor digitado como moeda brasileira.
+    /// Delega para StringExtension.ParseBrCurrency centralizado no Shared.
+    /// Se não contiver ponto nem vírgula, trata como valor inteiro em reais (ex: "15" → 15,00).
+    /// Se contiver separador, usa ponto como milhar e vírgula como decimal (ex: "1.500,50" → 1500,50).
+    /// </summary>
+    private static decimal ParseValorMonetario(string? input) =>
+        input.ParseBrCurrency() ?? 0m;
+
+    private static bool IsImageMedia(Mensagem mensagem) =>
+        NormalizeMediaKind(mensagem) is Consts.Midia.Image or Consts.Midia.Sticker;
+
+    private static bool IsMediaMessage(Mensagem mensagem) =>
+        mensagem.HasMedia ||
+        !string.IsNullOrWhiteSpace(mensagem.MediaType) ||
+        mensagem.Type is PharmazapPlus.Shared.Models.Mensagens.MessageType.Image
+            or PharmazapPlus.Shared.Models.Mensagens.MessageType.Sticker
+            or PharmazapPlus.Shared.Models.Mensagens.MessageType.Video
+            or PharmazapPlus.Shared.Models.Mensagens.MessageType.Audio
+            or PharmazapPlus.Shared.Models.Mensagens.MessageType.Document;
+
+    private static bool IsVideoMedia(Mensagem mensagem) =>
+        NormalizeMediaKind(mensagem) == Consts.Midia.Video;
+
+    private static bool IsAudioMedia(Mensagem mensagem) =>
+        NormalizeMediaKind(mensagem) == Consts.Midia.Audio;
+
+    private static string NormalizeMediaKind(Mensagem mensagem)
+    {
+        var mediaType = (mensagem.MediaType ?? string.Empty).Trim().ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(mediaType))
+        {
+            if (mediaType.Contains(Consts.Midia.Image) || mediaType.Contains(Consts.Midia.Sticker)) return Consts.Midia.Image;
+            if (mediaType.Contains(Consts.Midia.Video)) return Consts.Midia.Video;
+            if (mediaType.Contains(Consts.Midia.Audio)) return Consts.Midia.Audio;
+            if (mediaType.Contains(Consts.Midia.Document)) return Consts.Midia.Document;
+        }
+
+        return mensagem.Type switch
+        {
+            PharmazapPlus.Shared.Models.Mensagens.MessageType.Image => Consts.Midia.Image,
+            PharmazapPlus.Shared.Models.Mensagens.MessageType.Sticker => Consts.Midia.Sticker,
+            PharmazapPlus.Shared.Models.Mensagens.MessageType.Video => Consts.Midia.Video,
+            PharmazapPlus.Shared.Models.Mensagens.MessageType.Audio => Consts.Midia.Audio,
+            PharmazapPlus.Shared.Models.Mensagens.MessageType.Document => Consts.Midia.Document,
+            _ => Consts.Midia.Document
+        };
+    }
+
+    private static string GetMediaMimeType(Mensagem mensagem, string fallback)
+    {
+        var mediaType = mensagem.MediaType?.Trim();
+        return !string.IsNullOrWhiteSpace(mediaType) && mediaType.Contains("/")
+            ? mediaType
+            : fallback;
+    }
+
+    private static string GetMediaFileName(Mensagem mensagem)
+    {
+        var caption = mensagem.MediaCaption?.Trim();
+        if (!string.IsNullOrWhiteSpace(caption))
+            return caption;
+
+        var text = mensagem.Text?.Trim();
+        if (!string.IsNullOrWhiteSpace(text) && text != "[Documento]")
+            return text;
+
+        var mediaUrl = mensagem.MediaUrl?.Trim();
+        if (!string.IsNullOrWhiteSpace(mediaUrl) &&
+            Uri.TryCreate(mediaUrl, UriKind.Absolute, out var uri))
+        {
+            var fileName = Path.GetFileName(uri.LocalPath);
+            if (!string.IsNullOrWhiteSpace(fileName))
+                return Uri.UnescapeDataString(fileName);
+        }
+
+        return "documento";
+    }
+
+    private static string BuildMediaFileName(Mensagem mensagem, string? contentType)
+    {
+        var fileName = GetMediaFileName(mensagem);
+        if (Path.HasExtension(fileName))
+            return fileName;
+
+        // Try to resolve extension from the HTTP response content type first.
+        var extension = GetExtensionFromContentType(contentType);
+        if (!string.IsNullOrWhiteSpace(extension))
+            return $"{fileName}.{extension}";
+
+        // Fallback: use the MediaType field stored on the message (MIME hint from the webhook).
+        // This handles the common case where the file was stored as .bin (application/octet-stream)
+        // but the original MIME type is known from the webhook payload (e.g. application/pdf).
+        extension = GetExtensionFromContentType(mensagem.MediaType);
+        if (!string.IsNullOrWhiteSpace(extension))
+            return $"{fileName}.{extension}";
+
+        // Last resort: images default to .jpg, everything else to .bin.
+        return $"{fileName}.{(IsImageMedia(mensagem) ? "jpg" : "bin")}";
+    }
+
+    private static string? GetExtensionFromContentType(string? contentType)
+    {
+        var normalized = contentType?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(normalized))
+            return null;
+
+        // Strip parameters such as "; codecs=opus".
+        var semicolon = normalized.IndexOf(';');
+        if (semicolon > 0)
+            normalized = normalized[..semicolon].Trim();
+
+        return normalized switch
+        {
+            "image/jpeg" or "image/jpg" => "jpg",
+            "image/png" => "png",
+            "image/webp" => "webp",
+            "image/gif" => "gif",
+            "image/bmp" => "bmp",
+            "application/pdf" => "pdf",
+            "application/msword" => "doc",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "docx",
+            "application/vnd.ms-excel" => "xls",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => "xlsx",
+            "text/plain" => "txt",
+            "audio/ogg" => "ogg",
+            "audio/mpeg" or "audio/mp3" => "mp3",
+            "audio/mp4" or "audio/m4a" or "audio/x-m4a" or "audio/aac" => "m4a",
+            "audio/wav" or "audio/x-wav" => "wav",
+            "video/mp4" => "mp4",
+            "video/webm" => "webm",
+            _ => null
+        };
+    }
+
+    private static bool IsAllowedImageContentType(string? contentType)
+    {
+        var normalized = contentType?.Trim().ToLowerInvariant();
+        var semicolon = normalized?.IndexOf(';') ?? -1;
+        if (semicolon >= 0)
+            normalized = normalized![..semicolon].Trim();
+
+        return normalized is "image/jpeg"
+            or "image/jpg"
+            or "image/png"
+            or "image/webp"
+            or "image/gif"
+            or "image/bmp";
+    }
+
+    private static string? GetSafeMediaUrl(string? mediaUrl)
+    {
+        if (string.IsNullOrWhiteSpace(mediaUrl))
+            return null;
+
+        var trimmedUrl = mediaUrl.Trim();
+        if (trimmedUrl.StartsWith("/uploads/", StringComparison.OrdinalIgnoreCase) ||
+            trimmedUrl.StartsWith("/media/", StringComparison.OrdinalIgnoreCase))
+            return trimmedUrl;
+
+        return Uri.TryCreate(trimmedUrl, UriKind.Absolute, out var uri) &&
+               (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+            ? trimmedUrl
+            : null;
+    }
+
+    /// <summary>
+    /// Returns the URL to use as the &lt;img&gt;/&lt;audio&gt;/&lt;video&gt; src in the browser.
+    /// For locally stored files (/uploads/media/...), routes through the Web app's
+    /// /media-proxy endpoint so the browser fetches from the same origin as the Web
+    /// app (avoids CORS and dev-cert issues when API and Web run on different origins).
+    /// For external HTTP(S) URLs, returns the URL directly.
+    /// </summary>
+    private static string? GetMediaDisplayUrl(Mensagem mensagem)
+    {
+        var safe = GetSafeMediaUrl(mensagem.MediaUrl);
+        if (safe is null) return null;
+
+        var contentTypeQuery = BuildMediaProxyContentTypeQuery(mensagem.MediaType);
+
+        if (safe.StartsWith("/uploads/", StringComparison.OrdinalIgnoreCase))
+            return "/media-proxy" + safe + contentTypeQuery;
+
+        if (safe.StartsWith("/media/", StringComparison.OrdinalIgnoreCase))
+            return "/media-proxy/uploads" + safe + contentTypeQuery;
+
+        if (IsProxyableExternalMediaUrl(safe))
+            return $"/media-proxy/fetch?url={Uri.EscapeDataString(safe)}{BuildMediaProxyContentTypeQuery(mensagem.MediaType, hasQuery: true)}";
+
+        return safe;
+    }
+
+    private static string BuildMediaProxyContentTypeQuery(string? contentType, bool hasQuery = false)
+    {
+        var normalized = contentType.NormalizeAllowedMediaContentType();
+        return string.IsNullOrWhiteSpace(normalized)
+            ? string.Empty
+            : $"{(hasQuery ? "&" : "?")}contentType={Uri.EscapeDataString(normalized)}";
+    }
+
+    private static bool IsProxyableExternalMediaUrl(string mediaUrl)
+    {
+        return PharmazapPlus.Web.Services.PharmazapApiService.IsWhatsAppCdnUrl(mediaUrl, out _) ||
+               PharmazapPlus.Web.Services.PharmazapApiService.IsBlobMediaUrl(mediaUrl, out _);
+    }
+
+    private static MarkupString FormatMessageContent(string? content)
+    {
+        if (string.IsNullOrEmpty(content))
+            return new MarkupString(string.Empty);
+
+        var builder = new System.Text.StringBuilder();
+        var matches = System.Text.RegularExpressions.Regex.Matches(
+            content,
+            @"https?://[^\s<]+",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        var lastIndex = 0;
+        foreach (System.Text.RegularExpressions.Match match in matches)
+        {
+            if (match.Index > lastIndex)
+            {
+                AppendEncodedMessageFragment(builder, content[lastIndex..match.Index]);
+            }
+
+            var (cleanUrl, trailingPunctuation) = SplitUrlSuffix(match.Value);
+            if (Uri.TryCreate(cleanUrl, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            {
+                builder.Append("<a href=\"")
+                    .Append(System.Net.WebUtility.HtmlEncode(cleanUrl))
+                    .Append("\" target=\"_blank\" rel=\"noopener noreferrer\">")
+                    .Append(System.Net.WebUtility.HtmlEncode(cleanUrl))
+                    .Append("</a>");
+            }
+            else
+            {
+                AppendEncodedMessageFragment(builder, match.Value);
+                trailingPunctuation = string.Empty;
+            }
+
+            if (!string.IsNullOrEmpty(trailingPunctuation))
+            {
+                AppendEncodedMessageFragment(builder, trailingPunctuation);
+            }
+
+            lastIndex = match.Index + match.Length;
+        }
+
+        if (lastIndex < content.Length)
+        {
+            AppendEncodedMessageFragment(builder, content[lastIndex..]);
+        }
+
+        return new MarkupString(builder.ToString());
+    }
+
+    private static void AppendEncodedMessageFragment(System.Text.StringBuilder builder, string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return;
+
+        builder.Append(System.Net.WebUtility.HtmlEncode(value)
+            .Replace("\r\n", "<br />", StringComparison.Ordinal)
+            .Replace("\n", "<br />", StringComparison.Ordinal)
+            .Replace("\r", "<br />", StringComparison.Ordinal));
+    }
+
+    private static (string CleanUrl, string TrailingPunctuation) SplitUrlSuffix(string url)
+    {
+        var end = url.Length;
+        while (end > 0 && ".,;:!?)]}".IndexOf(url[end - 1]) >= 0)
+        {
+            end--;
+        }
+
+        return end == url.Length
+            ? (url, string.Empty)
+            : (url[..end], url[end..]);
+    }
+}
+
+<style>
+    .chat-messages {
+        flex-grow: 1;
+        overflow-y: auto;
+        padding: 16px;
+        background: var(--neutral-layer-2);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .message {
+        max-width: 70%;
+        padding: 8px 12px;
+        border-radius: 12px;
+        position: relative;
+        word-wrap: break-word;
+    }
+
+    .message-inbound {
+        align-self: flex-start;
+        background: var(--neutral-layer-1);
+        border: 1px solid var(--neutral-stroke-rest);
+    }
+
+    .message-outbound {
+        align-self: flex-end;
+        background: var(--accent-fill-rest);
+        color: var(--foreground-on-accent-rest, white);
+    }
+
+    .message-outbound .message-time {
+        color: #b0cfe0;
+    }
+
+    .message-template {
+        border-left: 4px solid var(--colorStatusWarningBackground3, #ffb900);
+    }
+
+    .message-sender-name {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--accent-fill-rest);
+        margin-bottom: 2px;
+    }
+
+    .message-text {
+        margin-bottom: 4px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .message-media {
+        margin-bottom: 8px;
+    }
+
+    .message-media img {
+        max-width: 200px;
+        max-height: 200px;
+        border-radius: 8px;
+        cursor: pointer;
+        object-fit: cover;
+        display: block;
+    }
+
+    .message-media video {
+        max-width: 280px;
+        max-height: 280px;
+        border-radius: 8px;
+        display: block;
+        background: #000;
+    }
+
+    .message-media audio {
+        width: 280px;
+        max-width: 100%;
+    }
+
+    .message-media-link,
+    .message-media-download {
+        color: inherit;
+        text-decoration: none;
+        display: inline-flex;
+    }
+
+    .media-caption {
+        margin-top: 4px;
+        font-size: 12px;
+        opacity: 0.8;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .message-text a,
+    .media-caption a {
+        color: inherit;
+        text-decoration: underline;
+    }
+
+    .typing-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        background: var(--neutral-layer-1);
+        border-radius: 12px;
+        align-self: flex-start;
+        max-width: 200px;
+    }
+
+    .typing-dots {
+        display: flex;
+        gap: 2px;
+    }
+
+    .typing-dots span {
+        width: 6px;
+        height: 6px;
+        background: var(--neutral-foreground-hint);
+        border-radius: 50%;
+        animation: typing 1.4s infinite;
+    }
+
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+    @@keyframes typing {
+        0%, 60%, 100% { transform: translateY(0); }
+        30% { transform: translateY(-4px); }
+    }
+
+    .message-date-divider {
+        text-align: center;
+        margin: 16px 0;
+    }
+
+    .message-date-divider span {
+        background: var(--neutral-layer-2);
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        color: var(--neutral-foreground-hint);
+        border: 1px solid var(--neutral-stroke-rest);
+    }
+
+    .cliente-info-panel {
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 300px;
+        height: 100%;
+        background: var(--neutral-layer-1);
+        box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .status-error {
+        color: var(--error);
+    }
+
+    .pending-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        background: var(--colorStatusWarningBackground2, rgba(255, 185, 0, 0.12));
+        border-top: 2px solid var(--colorStatusWarningBorderActive, #d97706);
+        color: var(--neutral-foreground-rest);
+        flex-shrink: 0;
+    }
+
+    .locked-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        background: var(--colorNeutralBackground2, rgba(0, 0, 0, 0.06));
+        border-top: 2px solid var(--neutral-stroke-strong-rest, #888);
+        color: var(--neutral-foreground-rest);
+        flex-shrink: 0;
+    }
+
+    .chat-etiquetar-bar {
+        display: flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-top: 1px solid var(--neutral-stroke-rest);
+        background: var(--neutral-layer-1);
+        flex-shrink: 0;
+    }
+
+    .chat-header__channel-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 32px;
+        height: 32px;
+        flex-shrink: 0;
+        color: var(--neutral-foreground-hint);
+        opacity: 0.7;
+    }
+
+    .chat-header__summary-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        flex-wrap: nowrap;
+    }
+
+    .chat-header__name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+
+    .chat-header__actions-row {
+        display: flex;
+        justify-content: flex-end;
+        margin-left: auto;
+        min-width: 0;
+    }
+
+    .chat-header__actions {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        flex-shrink: 0;
+        flex-wrap: nowrap;
+    }
+
+    .message-media-preview-button {
+        border: none;
+        padding: 0;
+        margin: 0;
+        background: transparent;
+        cursor: pointer;
+    }
+
+    .chat-image-preview-container {
+        display: flex;
+        justify-content: center;
+        max-height: 70vh;
+        overflow: auto;
+    }
+
+    .chat-image-preview {
+        max-width: 100%;
+        max-height: 68vh;
+        border-radius: 8px;
+        object-fit: contain;
+    }
+
+    .chat-header__action-btn {
+        font-size: var(--type-ramp-minus1-font-size);
+        min-height: 26px;
+        padding: 0 5px;
+        white-space: nowrap;
+    }
+
+    .chat-header__action-btn--danger {
+        background-color: var(--error-color, #d13438);
+        border-color: var(--error-color, #d13438);
+    }
+</style>

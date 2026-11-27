@@ -1,0 +1,31 @@
+.meta-oauth-launch-wrapper {
+    display: inline-flex;
+}
+
+.meta-oauth-launch-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.meta-oauth-facebook-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.2rem;
+    height: 1.2rem;
+    border-radius: 999px;
+    background: var(--neutral-layer-floating);
+    color: var(--accent-fill-rest);
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1;
+    text-transform: lowercase;
+    flex-shrink: 0;
+}
+
+.meta-oauth-facebook-icon-svg {
+    width: 0.7rem;
+    height: 0.7rem;
+    fill: currentColor;
+}

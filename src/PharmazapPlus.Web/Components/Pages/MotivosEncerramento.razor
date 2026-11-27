@@ -1,0 +1,445 @@
+@page "/motivos-encerramento"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = UserRoles.Administrador)]
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<MotivosEncerramento> Logger
+@inject IPharmazapApiService PharmazapApiService
+@inject IToastService ToastService
+
+<PageTitle>Motivos de Encerramento - Pharmazap Plus</PageTitle>
+
+<div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+    @if (CurrentUser != null)
+    {
+        <div style="flex-shrink: 0; width: 100%;">
+            <FluentCard Style="padding: 1rem 2rem; border-radius: 0; width: 100%;">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="12" Style="flex: 1; min-width: 0;">
+                        <FluentIcon Icon="@(Icons.Regular.Size32.CallEnd)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="min-width: 0;">
+                            <FluentLabel Typo="Typography.PageTitle" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Motivos de Encerramento</FluentLabel>
+                            <FluentLabel Typo="Typography.Body">Gerencie os motivos disponíveis para finalizar atendimentos</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="margin-left: auto; flex-shrink: 0; width: auto;">
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovoMotivo">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Slot="start" Color="Color.Fill" />
+                            Novo Motivo
+                        </FluentButton>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+        </div>
+
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 10; overflow: visible;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8"
+                             VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+                    <FluentTextField @bind-Value="@SearchQuery"
+                                    Placeholder="Buscar por nome..."
+                                    Style="flex: 1;"
+                                    Autocomplete="off"
+                                    @onkeydown="HandleSearchKeyDown">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Search)" Slot="start" />
+                    </FluentTextField>
+
+                    <FluentSelect TOption="FilterStatusEnum"
+                                 @bind-SelectedOption="@FilterStatus"
+                                 Style="min-width: 180px; position: relative; z-index: 10; overflow: visible;">
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.All)">Todos</FluentOption>
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.Active)">Ativos</FluentOption>
+                        <FluentOption TOption="FilterStatusEnum" Value="@nameof(FilterStatusEnum.Inactive)">Inativos</FluentOption>
+                    </FluentSelect>
+
+                    <FluentButton Appearance="Appearance.Outline" @onclick="ClearFilters">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" Slot="start" />
+                        Limpar
+                    </FluentButton>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="32" Wrap="true">
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.CallEnd)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--accent-fill-rest);">@TotalMotivos</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Total</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.Checkmark)" Color="Color.Success" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusSuccessForeground3);">@MotivosAtivos</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Ativos</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="width: auto;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.Dismiss)" Color="Color.Warning" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="width: auto;">
+                            <FluentLabel Style="font-size: 2rem; font-weight: 700; color: var(--colorStatusWarningForeground3);">@MotivosInativos</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Inativos</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+
+            <FluentCard Style="padding: 1.5rem; width: 100%; position: relative; z-index: 1;">
+                @if (IsLoading)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12" Style="padding: 3rem;">
+                        <FluentProgressRing />
+                        <FluentLabel>Carregando motivos de encerramento...</FluentLabel>
+                    </FluentStack>
+                }
+                else if (!MotivosFiltrados.Any())
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" VerticalGap="12"
+                                 Style="padding: 4rem; text-align: center;">
+                        <FluentIcon Icon="@(Icons.Regular.Size48.CallEnd)" Style="color: var(--neutral-foreground-hint);" />
+                        <FluentLabel Typo="Typography.Subject">Nenhum motivo de encerramento encontrado</FluentLabel>
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">Crie motivos para padronizar o encerramento de atendimentos</FluentLabel>
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovoMotivo">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Slot="start" Color="Color.Fill" />
+                            Criar Primeiro Motivo
+                        </FluentButton>
+                    </FluentStack>
+                }
+                else
+                {
+                    <FluentDataGrid Items="@MotivosFiltrados"
+                                   GridTemplateColumns="2fr 1fr 1fr 1fr 80px 140px"
+                                   Style="width: 100%; overflow-x: auto;">
+
+                        <TemplateColumn Title="Motivo" Sortable="true">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="10"
+                                         VerticalAlignment="VerticalAlignment.Center">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.CallEnd)" />
+                                <FluentLabel>@context.Nome</FluentLabel>
+                            </FluentStack>
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Exige Valor">
+                            @if (context.ExigeValorVenda)
+                            {
+                                <FluentBadge Appearance="Appearance.Accent">Sim</FluentBadge>
+                            }
+                            else
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral">Não</FluentBadge>
+                            }
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Exige Comprovante">
+                            @if (context.ExigeComprovante)
+                            {
+                                <FluentBadge Appearance="Appearance.Accent">Sim</FluentBadge>
+                            }
+                            else
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral">Não</FluentBadge>
+                            }
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Status">
+                            @if (context.Ativo)
+                            {
+                                <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@Consts.DesignTokens.SuccessBackground">Ativo</FluentBadge>
+                            }
+                            else
+                            {
+                                <FluentBadge Appearance="Appearance.Neutral">Inativo</FluentBadge>
+                            }
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Ordem">
+                            <FluentLabel>@context.Ordem</FluentLabel>
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Ações">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="4">
+                                <FluentButton Appearance="Appearance.Stealth"
+                                               Title="Editar"
+                                               @onclick="@(() => ShowEditMotivo(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Edit)" />
+                                </FluentButton>
+                                @if (context.Ativo)
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                   Title="Inativar"
+                                                   @onclick="@(() => ConfirmInativar(context))">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                                    </FluentButton>
+                                }
+                                else
+                                {
+                                    <FluentButton Appearance="Appearance.Stealth"
+                                                   Title="Ativar"
+                                                   @onclick="@(() => ConfirmAtivar(context))">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Checkmark)" />
+                                    </FluentButton>
+                                }
+                            </FluentStack>
+                        </TemplateColumn>
+                    </FluentDataGrid>
+                }
+            </FluentCard>
+        </div>
+    }
+    else
+    {
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;">
+            <FluentProgressRing />
+            <FluentLabel>Carregando...</FluentLabel>
+        </div>
+    }
+</div>
+
+<!-- Confirmation Dialog for Inativar/Ativar -->
+<FluentDialog @ref="_confirmDialog" Modal="true" Hidden="@(!_showConfirmDialog)" TrapFocus="true"
+              @ondialogdismiss="CancelConfirm">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentLabel Typo="Typography.Subject">@_confirmTitle</FluentLabel>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CancelConfirm" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentLabel>@_confirmMessage</FluentLabel>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CancelConfirm">Cancelar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ExecuteConfirm">Confirmar</FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Form Dialog for Create/Edit -->
+<MotivoEncerramentoFormDialog Visible="@_showFormDialog"
+                              VisibleChanged="@OnFormDialogVisibleChanged"
+                              Motivo="@_editingMotivo"
+                              OnSave="@HandleFormSave" />
+
+@code {
+    private UserInfo? CurrentUser { get; set; }
+    private List<MotivoEncerramentoDto> MotivosList { get; set; } = new();
+
+    private IQueryable<MotivoEncerramentoDto> MotivosFiltrados
+    {
+        get
+        {
+            var filtered = MotivosList.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                filtered = filtered.Where(m =>
+                    m.Nome?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false);
+            }
+
+            filtered = FilterStatus switch
+            {
+                FilterStatusEnum.Active => filtered.Where(m => m.Ativo),
+                FilterStatusEnum.Inactive => filtered.Where(m => !m.Ativo),
+                _ => filtered
+            };
+
+            return filtered.AsQueryable();
+        }
+    }
+
+    private string SearchQuery { get; set; } = "";
+    private FilterStatusEnum FilterStatus { get; set; } = FilterStatusEnum.All;
+    private bool IsLoading { get; set; } = true;
+
+    private int TotalMotivos => MotivosList.Count;
+    private int MotivosAtivos => MotivosList.Count(m => m.Ativo);
+    private int MotivosInativos => MotivosList.Count(m => !m.Ativo);
+
+    // Form dialog
+    private bool _showFormDialog = false;
+    private MotivoEncerramentoDto? _editingMotivo = null;
+
+    // Confirmation dialog
+    private FluentDialog? _confirmDialog;
+    private bool _showConfirmDialog = false;
+    private string _confirmTitle = "";
+    private string _confirmMessage = "";
+    private Func<Task>? _confirmAction;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        try
+        {
+            SearchQuery = "";
+            FilterStatus = FilterStatusEnum.All;
+
+            CurrentUser = await AuthService.GetUserInfo();
+            if (CurrentUser == null)
+            {
+                Navigation.NavigateTo(Consts.Web.LoginPath, true);
+                return;
+            }
+
+            await InvokeAsync(StateHasChanged);
+            await LoadMotivos();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing motivos encerramento page");
+            Navigation.NavigateTo(Consts.Web.LoginPath, true);
+        }
+    }
+
+    private async Task LoadMotivos()
+    {
+        IsLoading = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            MotivosList = await PharmazapApiService.GetMotivosEncerramentoAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading motivos encerramento");
+            ToastService.ShowError("Erro ao carregar motivos de encerramento.");
+        }
+        finally
+        {
+            IsLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            StateHasChanged();
+    }
+
+    private void ClearFilters()
+    {
+        SearchQuery = "";
+        FilterStatus = FilterStatusEnum.All;
+        StateHasChanged();
+    }
+
+    private void ShowNovoMotivo()
+    {
+        _editingMotivo = null;
+        _showFormDialog = true;
+    }
+
+    private void ShowEditMotivo(MotivoEncerramentoDto motivo)
+    {
+        _editingMotivo = motivo;
+        _showFormDialog = true;
+    }
+
+    private async Task OnFormDialogVisibleChanged(bool visible)
+    {
+        _showFormDialog = visible;
+        StateHasChanged();
+    }
+
+    private async Task HandleFormSave((bool IsNew, CreateMotivoEncerramentoDto? Create, UpdateMotivoEncerramentoDto? Update) args)
+    {
+        _showFormDialog = false;
+
+        if (args.IsNew && args.Create != null)
+        {
+            var (success, message) = await PharmazapApiService.CreateMotivoEncerramentoAsync(args.Create);
+            if (success)
+            {
+                ToastService.ShowSuccess("Motivo de encerramento criado com sucesso!");
+                await LoadMotivos();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao criar motivo: {message}");
+            }
+        }
+        else if (!args.IsNew && args.Update != null && _editingMotivo != null)
+        {
+            var (success, message) = await PharmazapApiService.UpdateMotivoEncerramentoAsync(_editingMotivo.Id, args.Update);
+            if (success)
+            {
+                ToastService.ShowSuccess("Motivo de encerramento atualizado com sucesso!");
+                await LoadMotivos();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao atualizar motivo: {message}");
+            }
+        }
+        _editingMotivo = null;
+    }
+
+    private void ConfirmInativar(MotivoEncerramentoDto motivo)
+    {
+        _confirmTitle = "Inativar Motivo";
+        _confirmMessage = $"Tem certeza que deseja inativar o motivo \"{motivo.Nome}\"?";
+        _confirmAction = async () =>
+        {
+            var (success, message) = await PharmazapApiService.InativarMotivoEncerramentoAsync(motivo.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess("Motivo inativado com sucesso!");
+                await LoadMotivos();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao inativar motivo: {message}");
+            }
+        };
+        _showConfirmDialog = true;
+    }
+
+    private void ConfirmAtivar(MotivoEncerramentoDto motivo)
+    {
+        _confirmTitle = "Ativar Motivo";
+        _confirmMessage = $"Tem certeza que deseja ativar o motivo \"{motivo.Nome}\"?";
+        _confirmAction = async () =>
+        {
+            var (success, message) = await PharmazapApiService.AtivarMotivoEncerramentoAsync(motivo.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess("Motivo ativado com sucesso!");
+                await LoadMotivos();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao ativar motivo: {message}");
+            }
+        };
+        _showConfirmDialog = true;
+    }
+
+    private void CancelConfirm()
+    {
+        _showConfirmDialog = false;
+        _confirmAction = null;
+    }
+
+    private async Task ExecuteConfirm()
+    {
+        _showConfirmDialog = false;
+        if (_confirmAction != null)
+        {
+            await _confirmAction();
+            _confirmAction = null;
+        }
+    }
+}

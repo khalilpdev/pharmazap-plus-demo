@@ -1,0 +1,29 @@
+﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @if (context.User.Identity?.IsAuthenticated == true)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalAlignment="VerticalAlignment.Center" Style="min-height: 60vh;">
+                        <FluentIcon Icon="@(Icons.Regular.Size48.LockClosed)" Color="Color.Error" />
+                        <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Acesso negado</FluentLabel>
+                        <FluentLabel Color="Color.Lightweight">Você não tem permissão para acessar esta página.</FluentLabel>
+                        <FluentButton Appearance="Appearance.Accent" href="/dashboard">Ir para o Dashboard</FluentButton>
+                    </FluentStack>
+                }
+                else
+                {
+                    <RedirectToLogin />
+                }
+            </NotAuthorized>
+            <Authorizing>
+                <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                             VerticalAlignment="VerticalAlignment.Center" Style="min-height: 60vh;">
+                    <FluentProgressRing />
+                    <FluentLabel>Verificando autenticação...</FluentLabel>
+                </FluentStack>
+            </Authorizing>
+        </AuthorizeRouteView>
+    </Found>
+</Router>

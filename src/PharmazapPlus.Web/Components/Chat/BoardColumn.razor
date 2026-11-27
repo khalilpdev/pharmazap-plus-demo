@@ -1,0 +1,43 @@
+@using Microsoft.FluentUI.AspNetCore.Components
+
+<div class="msg-board__col" role="region" aria-label="@Title">
+    <div class="msg-board__col-header">
+        <span class="msg-board__col-title">@Title</span>
+        <FluentBadge Appearance="@BadgeAppearance">@Count</FluentBadge>
+    </div>
+    <div class="msg-board__col-list">
+        @if (IsLoading)
+        {
+            <div class="msg-board__col-empty">
+                <FluentProgressRing Style="width: 24px; height: 24px;" />
+                <span>Carregando...</span>
+            </div>
+        }
+        else if (Count == 0)
+        {
+            <div class="msg-board__col-empty">
+                <FluentIcon Icon="@(Icons.Regular.Size24.CheckmarkCircle)" Color="Color.Lightweight" />
+                <span>Nenhum atendimento</span>
+            </div>
+        }
+        else
+        {
+            @ChildContent
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public int Count { get; set; }
+    [Parameter] public string StatusClass { get; set; } = "default";
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private Appearance BadgeAppearance => StatusClass switch
+    {
+        "pending" => Appearance.Accent,
+        "active" => Appearance.Accent,
+        _ => Appearance.Neutral
+    };
+}

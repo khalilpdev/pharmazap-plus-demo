@@ -1,0 +1,592 @@
+/* ================================================================
+   Messages page — scoped CSS
+   Layout: sidebar list (mobile-first) + board (desktop toggle)
+   ================================================================ */
+
+/* ── Page container ─────────────────────────────────────────── */
+.msg-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* ── Header bar ─────────────────────────────────────────────── */
+.msg-header {
+    padding: 0.75rem 1.5rem;
+    border-bottom: 1px solid var(--pz-border-divider);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--neutral-fill-layer-rest);
+}
+
+.msg-header__title {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.msg-header__actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* ── Status filter checkboxes ────────────────────────────────── */
+.msg-status-filters {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    background: var(--neutral-fill-secondary-rest);
+    border: 1px solid var(--pz-border-divider);
+    border-radius: 6px;
+    padding: 4px 10px;
+}
+
+.msg-status-filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: var(--type-ramp-base-font-size, 14px);
+    color: var(--neutral-foreground-rest);
+    user-select: none;
+    white-space: nowrap;
+    transition: background 0.12s;
+}
+
+.msg-status-filter:hover {
+    background: var(--neutral-fill-hover);
+}
+
+.msg-status-filter input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--accent-fill-rest);
+    flex-shrink: 0;
+}
+
+.msg-status-filter__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+}
+
+.msg-status-filter__dot--pending {
+    background: var(--colorStatusWarningForeground3, #d97706);
+}
+
+.msg-status-filter__dot--active {
+    background: var(--accent-fill-rest);
+}
+
+.msg-status-filter__dot--finished {
+    background: var(--neutral-foreground-hint);
+}
+
+.msg-mobile-back {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--pz-border-divider);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    background: var(--neutral-fill-layer-rest);
+}
+
+.msg-mobile-back__button {
+    min-height: 40px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--neutral-stroke-rest);
+    background: var(--neutral-fill-secondary-rest);
+    color: var(--neutral-foreground-rest);
+    font-weight: 600;
+}
+
+.msg-mobile-back__button:hover {
+    background: var(--neutral-fill-hover);
+}
+
+.msg-mobile-back__info {
+    min-width: 0;
+    overflow: hidden;
+}
+
+.msg-mobile-back__info-item {
+    font-size: 0.75rem;
+    color: var(--neutral-foreground-hint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── Content area ───────────────────────────────────────────── */
+.msg-content {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    min-height: 0;
+}
+
+/* ── Sidebar (list view) ────────────────────────────────────── */
+.msg-sidebar {
+    width: 380px;
+    min-width: 280px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--pz-border-divider);
+    overflow: hidden;
+}
+
+.msg-sidebar__search {
+    padding: 0.75rem;
+    border-bottom: 1px solid var(--pz-border-divider);
+    flex-shrink: 0;
+}
+
+.msg-sidebar__list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+}
+
+/* ── Chat panel ─────────────────────────────────────────────── */
+.msg-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+
+.msg-chat--empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ── Board / kanban layout ──────────────────────────────────── */
+.msg-board {
+    display: flex;
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 12px;
+    padding: 12px;
+    min-height: 0;
+    align-items: stretch;
+}
+
+.msg-board__col {
+    width: 300px;
+    min-width: 260px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--neutral-fill-secondary-rest);
+    border-radius: var(--layer-corner-radius, 6px);
+    overflow: hidden;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+}
+
+.msg-board__col-header {
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--pz-border-divider);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    background: var(--neutral-fill-layer-rest);
+}
+
+.msg-board__col-title {
+    flex: 1;
+    font-size: var(--pz-font-size-sm);
+    font-weight: 600;
+    color: var(--pz-text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.msg-board__col-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+}
+
+.msg-board__col-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+    gap: 8px;
+    color: var(--pz-text-secondary);
+    font-size: var(--pz-font-size-sm);
+    text-align: center;
+}
+
+/* ── Conversation card ──────────────────────────────────────── */
+::deep .conv-card {
+    border-radius: var(--layer-corner-radius, 6px);
+    padding: 12px 14px;
+    background: var(--neutral-fill-layer-rest);
+    border: 1px solid var(--pz-border-subtle);
+    cursor: pointer;
+    transition: box-shadow var(--pz-duration-fast, 100ms) ease,
+        background var(--pz-duration-fast, 100ms) ease;
+    outline: none;
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+::deep .conv-card:hover {
+    box-shadow: var(--pz-shadow-4);
+    background: var(--neutral-fill-layer-hover);
+}
+
+::deep .conv-card:focus-visible {
+    box-shadow: 0 0 0 2px var(--pz-border-focus);
+}
+
+::deep .conv-card--selected {
+    background: var(--accent-fill-secondary-rest);
+    border-color: var(--pz-accent);
+}
+
+::deep .conv-card--pending {
+    border-left: 3px solid var(--colorPaletteYellowBorder2);
+}
+
+::deep .conv-card--active {
+    border-left: 3px solid var(--colorPaletteGreenBorder2);
+}
+
+::deep .conv-card--finished {
+    border-left: 3px solid var(--pz-border-subtle);
+}
+
+/* Header row: icon + name block + time */
+::deep .conv-card__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+::deep .conv-card__channel-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+}
+
+::deep .conv-card--pending .conv-card__channel-icon,
+::deep .conv-card--active .conv-card__channel-icon,
+::deep .conv-card--finished .conv-card__channel-icon,
+::deep .conv-card .conv-card__channel-icon {
+    color: var(--neutral-foreground-hint);
+    opacity: 0.7;
+}
+
+::deep .conv-card__name-block {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+::deep .conv-card__name {
+    font-size: var(--pz-font-size-base, 14px);
+    font-weight: 600;
+    color: var(--neutral-foreground-rest);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+::deep .conv-card__contact {
+    font-size: var(--pz-font-size-sm, 12px);
+    color: var(--neutral-foreground-hint);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+::deep .conv-card__time {
+    font-size: var(--pz-font-size-xs, 11px);
+    color: var(--neutral-foreground-hint);
+    white-space: nowrap;
+    flex-shrink: 0;
+    align-self: flex-start;
+    padding-top: 2px;
+}
+
+/* Message preview */
+::deep .conv-card__preview {
+    font-size: var(--pz-font-size-base, 13px);
+    color: var(--neutral-foreground-hint);
+    overflow: hidden;
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    padding-left: 28px;
+    line-height: 1.4;
+}
+
+/* Footer: tags + elapsed */
+::deep .conv-card__footer {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding-left: 28px;
+}
+
+::deep .conv-card__tags {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+}
+
+::deep .conv-card__etiqueta-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--pz-font-size-sm, 11px);
+    padding: 1px 6px;
+    border-radius: 10px;
+    color: var(--neutral-foreground-rest);
+    max-width: 100%;
+}
+
+::deep .conv-card__etiqueta-text {
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+::deep .conv-card__atendente-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: var(--pz-font-size-sm, 11px);
+    color: var(--neutral-foreground-hint);
+    padding: 1px 5px;
+    border-radius: 10px;
+    background: var(--neutral-fill-subtle-rest);
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Elapsed time indicator */
+::deep .conv-card__elapsed {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: var(--pz-font-size-xs, 11px);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+::deep .conv-card__elapsed--pending {
+    color: var(--colorStatusWarningForeground3, #d97706);
+}
+
+::deep .conv-card__elapsed--active {
+    color: var(--accent-fill-rest);
+}
+
+::deep .conv-card__elapsed--finished {
+    color: var(--neutral-foreground-hint);
+}
+
+::deep .conv-card__action {
+    margin-top: 4px;
+}
+
+/* ── View-toggle button group ───────────────────────────────── */
+.msg-view-toggle {
+    display: flex;
+    gap: 4px;
+    background: var(--neutral-fill-subtle-rest);
+    border-radius: var(--control-corner-radius, 4px);
+    padding: 2px;
+}
+
+/* ── Empty state ────────────────────────────────────────────── */
+.msg-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    text-align: center;
+    gap: 12px;
+    color: var(--pz-text-secondary);
+}
+
+/* ── Loading state ──────────────────────────────────────────── */
+.msg-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    gap: 12px;
+    color: var(--pz-text-secondary);
+}
+
+/* ── Status tabs: custom tab navigation ─────────────────────────── */
+.msg-sidebar__tabnav {
+    display: flex;
+    flex-direction: row;
+    flex-shrink: 0;
+    padding: 0 0.75rem;
+    gap: 0;
+    border-bottom: 1px solid var(--pz-border-divider);
+}
+
+.msg-sidebar__tab {
+    flex: 1 1 0%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 10px 8px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
+    font-size: var(--type-ramp-base-font-size, 14px);
+    color: var(--neutral-foreground-rest);
+    white-space: nowrap;
+    overflow: visible;
+    transition: color 0.12s, border-bottom-color 0.12s;
+    outline: none;
+}
+
+.msg-sidebar__tab-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.msg-sidebar__tab-badge {
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.msg-sidebar__tab:hover {
+    color: var(--accent-fill-rest);
+    background: var(--neutral-fill-hover);
+}
+
+.msg-sidebar__tab:focus-visible {
+    box-shadow: 0 0 0 2px var(--pz-border-focus);
+}
+
+.msg-sidebar__tab--active {
+    border-bottom-color: var(--accent-fill-rest);
+    color: var(--accent-fill-rest);
+    font-weight: 600;
+}
+
+/* ── Responsive: mobile ─────────────────────────────────────── */
+@media (max-width: 767px) {
+    .msg-sidebar {
+        width: 100%;
+        min-width: unset;
+        border-right: none;
+    }
+
+    /* When chat is open on mobile, hide the sidebar */
+    .msg-content--chat-open .msg-sidebar {
+        display: none;
+    }
+
+    /* Mobile chat takes full width */
+    .msg-content--chat-open .msg-chat {
+        width: 100%;
+    }
+
+    .msg-mobile-back {
+        padding: 8px 10px;
+        gap: 8px;
+    }
+
+    /* Hide board toggle on mobile */
+    .msg-board-toggle {
+        display: none;
+    }
+
+    .msg-header {
+        padding: 0.5rem 1rem;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    /* On mobile, compress status filters — hide labels, show only checkbox+dot */
+    .msg-status-filters {
+        order: 3;
+        width: 100%;
+        justify-content: center;
+        padding: 4px 8px;
+    }
+
+    .msg-status-filter span:last-child {
+        display: none;
+    }
+}
+
+/* ── Responsive: tablet/desktop ─────────────────────────────── */
+@media (min-width: 768px) {
+
+    /* Mobile back button hidden on desktop */
+    .msg-mobile-back {
+        display: none;
+    }
+}

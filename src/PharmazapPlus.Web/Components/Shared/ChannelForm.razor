@@ -1,0 +1,2274 @@
+@using System.Text.Json
+@using PharmazapPlus.Shared.Enums
+@implements IAsyncDisposable
+@inject IToastService ToastService
+@inject IConfiguration Configuration
+@inject IJSRuntime JSRuntime
+@inject IWebHostEnvironment Env
+@inject ILogger<ChannelForm> Logger
+
+<EditForm Model="@Model" OnValidSubmit="HandleSubmit" class="channel-form">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <FluentCard Style="padding:20px; width:100%; position: relative; z-index: 10; overflow: visible; background: var(--neutral-layer-1); color: var(--neutral-foreground-rest); border: 1px solid var(--neutral-stroke-divider-rest);">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="width: 100%; overflow: visible; position: relative; z-index: 10;">
+            <FluentTextField @bind-Value="Model.Name" Label="Nome do Canal *" Placeholder="Ex: WhatsApp Suporte" Style="width: 100%;" />
+
+            <div style="display: flex; gap: 12px; width: 100%; overflow: visible; position: relative;">
+                <div style="flex: 1; overflow: visible; position: relative; z-index: 40;">
+                    <FluentSelect TOption="string"
+                                  Label="Tipo *"
+                                  Value="@_selectedType"
+                                  ValueChanged="OnTypeChanged"
+                                  Style="width: 100%; position: relative; z-index: 40; overflow: visible;">
+                        <FluentOption Value="1">WhatsApp</FluentOption>
+                        <FluentOption Value="2">Instagram</FluentOption>
+                    </FluentSelect>
+                </div>
+                @if (Model.Type == ChannelType.WhatsApp || Model.Type == ChannelType.Instagram)
+                {
+                    <div style="flex: 1; overflow: visible; position: relative; z-index: 35;">
+                        <FluentSelect TOption="string"
+                                      Label="Integração"
+                                      Value="@_isOfficial"
+                                      ValueChanged="OnOfficialChanged"
+                                      Disabled="@IsIntegrationSelectorDisabled"
+                                      Style="width: 100%; position: relative; z-index: 35; overflow: visible;">
+                            <FluentOption Value="true">Oficial (Meta)</FluentOption>
+                            @if (Model.Type == ChannelType.WhatsApp)
+                            {
+                                <FluentOption Value="false">Não oficial</FluentOption>
+                            }
+                        </FluentSelect>
+                    </div>
+                }
+            </div>
+
+            @if (ShowMetaWizard)
+            {
+                <FluentCard Style="padding: 1rem 1.1rem; width: 100%; position: relative; z-index: 8; overflow: visible; background: var(--neutral-layer-1); border: 1px solid var(--neutral-stroke-divider-rest);">
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="width: 100%; overflow: visible; position: relative;">
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center" Style="flex-wrap: wrap;">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Lightbulb)" Color="Color.Accent" />
+                            <FluentLabel Typo="Typography.Subject">Assistente da Meta</FluentLabel>
+                            <FluentBadge Appearance="Appearance.Accent">App central do Pharmazap</FluentBadge>
+                            <FluentBadge Appearance="Appearance.Neutral">Passo @(_metaWizardStep + 1) de 3</FluentBadge>
+                        </FluentStack>
+
+                        <FluentLabel Style="color: var(--neutral-foreground-hint); line-height: 1.5;">
+                            Conecte a conta da farmácia para o Pharmazap buscar automaticamente os dados oficiais da Meta para <strong>@MetaChannelLabel</strong>.
+                        </FluentLabel>
+
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                            @for (var step = 0; step < MetaWizardSteps.Length; step++)
+                            {
+                                var currentStep = step;
+                                <FluentBadge Appearance="@(currentStep == _metaWizardStep ? Appearance.Accent : Appearance.Neutral)">
+                                    @(currentStep + 1). @MetaWizardSteps[currentStep]
+                                </FluentBadge>
+                            }
+                        </div>
+
+                        @if (_metaWizardStep == 0)
+                        {
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                                <FluentMessageBar Intent="@MessageIntent.Info" Style="width: 100%;">
+                                    @MetaWizardIntroMessage
+                                </FluentMessageBar>
+
+                                <div style="max-width: 340px; overflow: visible; position: relative; z-index: 30;">
+                                    <FluentSelect TOption="string"
+                                                  Label="Como deseja conectar? *"
+                                                  Value="@_metaConfigSource"
+                                                  ValueChanged="OnMetaConfigSourceChanged"
+                                                  Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                                        <FluentOption Value="1">Utilizar minhas próprias configurações da Meta</FluentOption>
+                                        <FluentOption Value="2">Usar app central do Pharmazap (Em Desenvolvimento)</FluentOption>
+                                    </FluentSelect>
+                                </div>
+
+                                @if (UsesCentralMetaConfig)
+                                {
+                                    <FluentMessageBar Intent="@MessageIntent.Success" Style="width: 100%;">
+                                        Você não precisa criar aplicativo na Meta, configurar App ID ou copiar webhook manualmente. O Pharmazap usa um app central e a farmácia só precisa autorizar a própria conta.
+                                    </FluentMessageBar>
+
+                                    <div style="max-width: 260px; overflow: visible; position: relative; z-index: 30;">
+                                        <FluentSelect TOption="string"
+                                                      Label="Ambiente Meta *"
+                                                      Value="@_metaWizardMode"
+                                                      ValueChanged="OnMetaWizardModeChanged"
+                                                      Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                                            <FluentOption Value="1">Teste</FluentOption>
+                                            <FluentOption Value="2">Produção</FluentOption>
+                                        </FluentSelect>
+                                        <FluentLabel Typo="Typography.Body"
+                                                     Style="color: var(--neutral-foreground-hint); margin-top: 4px; font-size: 0.8rem;">
+                                            O Pharmazap resolve internamente o App ID do ambiente escolhido e salva apenas esse modo no canal.
+                                        </FluentLabel>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <FluentMessageBar Intent="@MessageIntent.Warning" Style="width: 100%;">
+                                        Informe o App ID e o App Secret do app Meta da farmácia. O botão de conexão usará essas credenciais para abrir o OAuth do cliente.
+                                    </FluentMessageBar>
+
+                                    <div style="position: relative; z-index: 1; width: 100%;">
+                                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="6" Style="flex-wrap: wrap;">
+                                            <FluentLabel>Meta App ID *</FluentLabel>
+                                            <FluentButton Appearance="Appearance.Stealth"
+                                                          @onclick="() => OpenHelpDialog(HelpTopic.MetaAppId)"
+                                                          tabindex="0"
+                                                          aria-label="Como obter Meta App ID"
+                                                          Title="Como obter Meta App ID"
+                                                          Style="padding: 0; min-width: 24px; height: 24px;">
+                                                <FluentIcon Icon="@(Icons.Regular.Size16.QuestionCircle)" />
+                                            </FluentButton>
+                                            <a href="@MetaAppDashboardUrl" target="_blank" rel="noopener noreferrer" style="font-size: 0.85rem;">
+                                                Crie um ?
+                                            </a>
+                                        </FluentStack>
+                                        <FluentTextField @bind-Value="Model.MetaAppId" Placeholder="Ex: 123456789012345" Style="width: 100%;" />
+                                    </div>
+
+                                    <div style="position: relative; z-index: 1; width: 100%;">
+                                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="6" Style="flex-wrap: wrap;">
+                                            <FluentLabel>Meta App Secret *</FluentLabel>
+                                            <FluentButton Appearance="Appearance.Stealth"
+                                                          @onclick="() => OpenHelpDialog(HelpTopic.MetaAppSecret)"
+                                                          tabindex="0"
+                                                          aria-label="Como obter Meta App Secret"
+                                                          Title="Como obter Meta App Secret"
+                                                          Style="padding: 0; min-width: 24px; height: 24px;">
+                                                <FluentIcon Icon="@(Icons.Regular.Size16.QuestionCircle)" />
+                                            </FluentButton>
+                                            <a href="@MetaAppDashboardUrl" target="_blank" rel="noopener noreferrer" style="font-size: 0.85rem;">
+                                                Crie um ?
+                                            </a>
+                                        </FluentStack>
+                                        <FluentTextField @bind-Value="Model.MetaAppSecret"
+                                                         Placeholder="Informe o segredo do app"
+                                                         TextFieldType="TextFieldType.Password"
+                                                         Style="width: 100%;" />
+                                        <FluentLabel Typo="Typography.Body"
+                                                     Style="color: var(--neutral-foreground-hint); margin-top: 4px; font-size: 0.8rem;">
+                                            @(Model.HasPersistedMetaAppSecret
+                                                ? "O segredo atual já está salvo no servidor. Deixe em branco para reutilizá-lo."
+                                                : "Se você ainda não tiver um app, use o link 'Crie um ?' para abrir o Meta Dashboard.")
+                                        </FluentLabel>
+                                    </div>
+                                }
+
+                                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="flex-wrap: wrap;">
+                                    @* O popup precisa ser preparado no clique do navegador antes do round-trip do Blazor Server para evitar bloqueio pelo browser. *@
+                                    <span class="meta-oauth-launch-wrapper" onclick="window.metaOAuthInterop?.preparePopup();">
+                                        <FluentButton Appearance="Appearance.Accent"
+                                                      Type="ButtonType.Button"
+                                                      Class="meta-oauth-launch-button"
+                                                      Disabled="@_metaOAuthInProgress"
+                                                      @onclick="BeginMetaOAuthAsync">
+                                            @if (_metaOAuthInProgress)
+                                            {
+                                                <FluentProgressRing Style="width: 14px; height: 14px; margin-right: 6px;" />
+                                                <span>Conectando...</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="meta-oauth-facebook-icon" aria-hidden="true">
+                                                    <svg viewBox="0 0 16 16" class="meta-oauth-facebook-icon-svg" focusable="false">
+                                                        <path d="M9.134 15V8.62h2.141l.321-2.486H9.134V4.547c0-.72.2-1.21 1.233-1.21H11.7V1.113C11.469 1.082 10.675 1 9.75 1 7.818 1 6.496 2.18 6.496 4.346v1.788H4.346V8.62h2.15V15h2.638Z" />
+                                                    </svg>
+                                                </span>
+                                                <span>Conectar com Facebook</span>
+                                            }
+                                        </FluentButton>
+                                    </span>
+                                    <FluentButton Appearance="Appearance.Outline"
+                                                  Type="ButtonType.Button"
+                                                  @onclick="NextMetaWizardStep">
+                                        Prefiro preencher os dados manualmente
+                                    </FluentButton>
+                                </FluentStack>
+
+                                @if (!string.IsNullOrWhiteSpace(_metaOAuthMessage))
+                                {
+                                    <FluentMessageBar Intent="@_metaOAuthMessageIntent" Style="width: 100%;">
+                                        @_metaOAuthMessage
+                                    </FluentMessageBar>
+                                }
+
+                                <ul style="margin: 0; padding-left: 1.2rem; line-height: 1.6;">
+                                    @foreach (var item in GetMetaWizardIntroSteps())
+                                    {
+                                        <li>@item</li>
+                                    }
+                                </ul>
+                            </FluentStack>
+                        }
+                        else
+                        {
+                            <FluentMessageBar Intent="@MetaStepMessageIntent" Style="width: 100%;">
+                                @MetaStepMessage
+                            </FluentMessageBar>
+
+                            <ul style="margin: 0; padding-left: 1.2rem; line-height: 1.6;">
+                                @foreach (var item in GetMetaWizardReviewSteps())
+                                {
+                                    <li>@item</li>
+                                }
+                            </ul>
+                        }
+                    </FluentStack>
+                </FluentCard>
+            }
+
+            @if (Model.Type == ChannelType.WhatsApp)
+            {
+                @if (Model.IsOfficial)
+                {
+                    @if (!ShowMetaWizard || _metaWizardStep == 1)
+                    {
+                    // WhatsApp Oficial (Meta)
+                    <div style="position: relative; z-index: 1; width: 100%;">
+                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="4">
+                            <FluentLabel>Número conectado (Phone Number ID) *</FluentLabel>
+                            <FluentButton Appearance="Appearance.Stealth"
+                                          @onclick="() => OpenHelpDialog(HelpTopic.PhoneNumberId)"
+                                          tabindex="0"
+                                          aria-label="Como obter Phone Number ID"
+                                          Title="Como obter Phone Number ID"
+                                          Style="padding: 0; min-width: 24px; height: 24px;">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.QuestionCircle)" />
+                            </FluentButton>
+                        </FluentStack>
+                        <FluentTextField @bind-Value="Model.PhoneNumberId" Placeholder="Ex: 123456789" Style="width: 100%;" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); margin-top: 4px; font-size: 0.8rem;">
+                            Esse identificador costuma ser preenchido automaticamente após conectar com Facebook.
+                        </FluentLabel>
+                    </div>
+
+                    <div style="position: relative; z-index: 1; width: 100%;">
+                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="4">
+                            <FluentLabel>Conta do WhatsApp Business (WABA ID)</FluentLabel>
+                            <FluentButton Appearance="Appearance.Stealth"
+                                          @onclick="() => OpenHelpDialog(HelpTopic.BusinessAccountId)"
+                                          tabindex="0"
+                                          aria-label="Como obter Business Account ID"
+                                          Title="Como obter Business Account ID"
+                                          Style="padding: 0; min-width: 24px; height: 24px;">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.QuestionCircle)" />
+                            </FluentButton>
+                        </FluentStack>
+                        <FluentTextField @bind-Value="Model.BusinessAccountId" Placeholder="Ex: 987654321" Style="width: 100%;" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); margin-top: 4px; font-size: 0.8rem;">
+                            Se a conexão oficial localizar a conta correta, este campo será preenchido automaticamente.
+                        </FluentLabel>
+                    </div>
+                    }
+                }
+                else
+                {
+                    // WhatsApp Não Oficial (Evolution API, Baileys, etc)
+                    <div style="position: relative; z-index: 30; width: 100%; overflow: visible;">
+                        <FluentSelect TOption="string"
+                                      Label="Farmácia"
+                                      Value="@SelectedFarmaciaValue"
+                                      Disabled="true"
+                                      Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                            <FluentOption Value="@SelectedFarmaciaValue">@SelectedFarmaciaLabel</FluentOption>
+                        </FluentSelect>
+                    </div>
+
+                    <div style="position: relative; z-index: 1; width: 100%;">
+                        <FluentMessageBar Intent="@MessageIntent.Info" Style="width: 100%;">
+                            Por segurança, a URL da Evolution e a API Key são gerenciadas no servidor e não ficam visíveis neste formulário.
+                        </FluentMessageBar>
+                    </div>
+
+                    <div style="position: relative; z-index: 1; width: 100%;">
+                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="4">
+                            <FluentLabel>Identificador da Instância *</FluentLabel>
+                            <FluentButton Appearance="Appearance.Stealth"
+                                          @onclick="() => OpenHelpDialog(HelpTopic.InstanceName)"
+                                          tabindex="0"
+                                          aria-label="O que é o nome da instância"
+                                           Title="O que é o nome da instância"
+                                           Style="padding: 0; min-width: 24px; height: 24px;">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.QuestionCircle)" />
+                            </FluentButton>
+                        </FluentStack>
+
+                        <FluentTextField Value="@GetInstanceDisplayValue(Model.InstanceName)"
+                                         ValueChanged="OnInstanceNameChanged"
+                                         Immediate="true"
+                                         Placeholder="Ex: 5562998808389"
+                                         Style="width: 100%;" />
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); margin-top: 4px; font-size: 0.8rem;">
+                            Use o telefone (DDI + DDD + número), por exemplo <strong>5562998808389</strong>.
+                        </FluentLabel>
+
+                        @if (!string.IsNullOrWhiteSpace(_instanceOptionsMessage))
+                        {
+                            <FluentMessageBar Intent="@_instanceOptionsMessageIntent" Style="margin-top: 8px;">
+                                @_instanceOptionsMessage
+                            </FluentMessageBar>
+                        }
+                    </div>
+
+                    <div style="position: relative; z-index: 1; width: 100%;">
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="flex-wrap: wrap;">
+                            <FluentButton Appearance="Appearance.Accent"
+                                          Type="ButtonType.Button"
+                                          @onclick="GenerateQrCodeAsync"
+                                          Disabled="@(!CanGenerateQrCode || _loadingQrCode)">
+                                @if (_loadingQrCode)
+                                {
+                                    <FluentProgressRing Style="width: 14px; height: 14px; margin-right: 6px;" />
+                                }
+                                Gerar QR Code
+                            </FluentButton>
+                            <FluentButton Appearance="Appearance.Outline"
+                                          Type="ButtonType.Button"
+                                          @onclick="ValidateInstanceStatusAsync"
+                                          Disabled="@(!CanReloadInstanceOptions || _validatingInstanceStatus)">
+                                @if (_validatingInstanceStatus)
+                                {
+                                    <FluentProgressRing Style="width: 14px; height: 14px; margin-right: 6px;" />
+                                }
+                                Validar status
+                            </FluentButton>
+                        </FluentStack>
+
+                        @if (!string.IsNullOrWhiteSpace(_instanceStatusMessage))
+                        {
+                            <FluentMessageBar Intent="@_instanceStatusMessageIntent" Style="margin-top: 8px;">
+                                @_instanceStatusMessage
+                            </FluentMessageBar>
+                        }
+                    </div>
+
+                    <div style="position: relative; z-index: 1; width: 100%;">
+                        <FluentMessageBar Intent="@MessageIntent.Info" Style="margin-top: 8px;">
+                            Use APIs como Evolution API, Baileys ou similar. Acesse /tests para testar a conexão.
+                        </FluentMessageBar>
+                    </div>
+
+                }
+            }
+
+            @if (Model.Type == ChannelType.Instagram)
+            {
+                @if (!ShowMetaWizard || _metaWizardStep == 1)
+                {
+                <FluentMessageBar Intent="@MetaCredentialsMessageIntent" Style="width: 100%;">
+                    @MetaCredentialsMessage
+                </FluentMessageBar>
+
+                <div style="position: relative; z-index: 1; width: 100%;">
+                    <FluentStack Orientation="Orientation.Horizontal"
+                                 VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="4"
+                                 Style="justify-content: flex-end; margin-bottom: 4px;">
+                        <FluentButton Appearance="Appearance.Stealth"
+                                      @onclick="() => OpenHelpDialog(HelpTopic.InstagramBusinessId)"
+                                      tabindex="0"
+                                      aria-label="Como informar Instagram Business ID"
+                                      Title="Como informar Instagram Business ID"
+                                      Style="padding: 0; min-width: 24px; height: 24px;">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.QuestionCircle)" />
+                        </FluentButton>
+                    </FluentStack>
+                    <FluentTextField @bind-Value="Model.InstagramBusinessId" Label="Instagram Business ID *" Placeholder="Ex: 17841400000000000" Style="width: 100%;" />
+                    <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); margin-top: 4px; font-size: 0.8rem;">
+                        Normalmente preenchido automaticamente depois de clicar em <strong>Conectar com Facebook</strong>.
+                    </FluentLabel>
+                </div>
+
+                <div style="position: relative; z-index: 1; width: 100%;">
+                    <FluentTextField @bind-Value="Model.AccessToken" Label="Access Token da Meta *" Placeholder="Informe o token da Meta" TextFieldType="TextFieldType.Password" Style="width: 100%;" />
+                    <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); margin-top: 4px; font-size: 0.8rem;">
+                        O token costuma ser importado automaticamente pela conexão oficial.
+                    </FluentLabel>
+                </div>
+                }
+            }
+
+            @if (Model.Type == ChannelType.WhatsApp && Model.IsOfficial)
+            {
+                @if (!ShowMetaWizard || _metaWizardStep == 1)
+                {
+                <FluentMessageBar Intent="@MetaCredentialsMessageIntent" Style="width: 100%;">
+                    @MetaCredentialsMessage
+                </FluentMessageBar>
+
+                <div style="position: relative; z-index: 1; width: 100%;">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="4">
+                        <FluentLabel>Access Token da Meta @(IsAccessTokenRequired ? "*" : "")</FluentLabel>
+                        <FluentButton Appearance="Appearance.Stealth"
+                                      @onclick="() => OpenHelpDialog(HelpTopic.AccessToken)"
+                                      tabindex="0"
+                                      aria-label="Como obter Access Token"
+                                      Title="Como obter Access Token"
+                                      Style="padding: 0; min-width: 24px; height: 24px;">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.QuestionCircle)" />
+                        </FluentButton>
+                    </FluentStack>
+                    <FluentTextField @bind-Value="Model.AccessToken"
+                                     Placeholder="Informe o token"
+                                     TextFieldType="TextFieldType.Password"
+                                     Style="width: 100%;" />
+                    <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); margin-top: 4px; font-size: 0.8rem;">
+                        O token costuma ser preenchido automaticamente após a autorização no Facebook.
+                    </FluentLabel>
+                </div>
+                }
+            }
+
+            @if (ShowMetaWizard)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="justify-content: flex-end; width: 100%;">
+                    @if (_metaWizardStep > 0)
+                    {
+                        <FluentButton Appearance="Appearance.Neutral" Type="ButtonType.Button" @onclick="PreviousMetaWizardStep">
+                            Voltar
+                        </FluentButton>
+                    }
+
+                    @if (_metaWizardStep < MetaWizardSteps.Length - 1)
+                    {
+                        <FluentButton Appearance="Appearance.Outline" Type="ButtonType.Button" @onclick="NextMetaWizardStep">
+                            Continuar
+                        </FluentButton>
+                    }
+                    else
+                    {
+                        <FluentButton Appearance="Appearance.Accent" Type="ButtonType.Submit" Disabled="@(IsSubmitting || _instanceValidating)">
+                            @if (IsSubmitting || _instanceValidating)
+                            {
+                                <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 6px;" />
+                                <span>@(IsSubmitting ? "Salvando..." : "Verificando instância...")</span>
+                            }
+                            else
+                            {
+                                <span>Salvar</span>
+                            }
+                        </FluentButton>
+                    }
+                </FluentStack>
+            }
+            else
+            {
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="4" HorizontalAlignment="HorizontalAlignment.End">
+                    <FluentButton Appearance="Appearance.Accent" Type="ButtonType.Submit"
+                                  Disabled="@(IsSubmitting || _instanceValidating || !CanSubmitNonOfficialWhatsApp)">
+                        @if (IsSubmitting || _instanceValidating)
+                        {
+                            <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 6px;" />
+                            <span>@(IsSubmitting ? "Salvando..." : "Verificando instância...")</span>
+                        }
+                        else
+                        {
+                            <span>Salvar</span>
+                        }
+                    </FluentButton>
+                    @if (RequiresInstanceConnection && !_instanceConnected && !IsSubmitting && !_instanceValidating)
+                    {
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); font-size: 0.8rem;">
+                            Gere o QR Code, escaneie no WhatsApp e clique em <strong>Validar status</strong> para habilitar o botão Salvar.
+                        </FluentLabel>
+                    }
+                </FluentStack>
+            }
+        </FluentStack>
+    </FluentCard>
+</EditForm>
+
+<FluentDialog Modal="true" Hidden="@(!_showQrCodeDialog)" TrapFocus="true"
+              @ondialogdismiss="CloseQrCodeDialog"
+              Style="max-width: 520px; width: 95%; background: var(--neutral-layer-1); color: var(--neutral-foreground-rest);">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Link)" />
+                <FluentLabel Typo="Typography.Subject">Conectar Instância WhatsApp</FluentLabel>
+            </FluentStack>
+            <div style="margin-left: auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseQrCodeDialog" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="padding: 0.5rem 0;">
+            @* Mode selector *@
+            <div style="display: flex; gap: 0; border: 1px solid var(--neutral-stroke-rest); border-radius: 6px; overflow: hidden; width: 100%;">
+                <button type="button"
+                        style="flex: 1; padding: 8px 12px; border: none; cursor: pointer; font-size: 0.85rem; font-weight: 500;
+                               background: @(_qrDialogUsePairingCode ? "var(--neutral-layer-2)" : "var(--accent-fill-rest)");
+                               color: @(_qrDialogUsePairingCode ? "var(--neutral-foreground-rest)" : "var(--foreground-on-accent-rest)");"
+                        @onclick="@(() => SwitchQrDialogMode(false))">
+                    📷 QR Code
+                </button>
+                <button type="button"
+                        style="flex: 1; padding: 8px 12px; border: none; cursor: pointer; font-size: 0.85rem; font-weight: 500;
+                               background: @(_qrDialogUsePairingCode ? "var(--accent-fill-rest)" : "var(--neutral-layer-2)");
+                               color: @(_qrDialogUsePairingCode ? "var(--foreground-on-accent-rest)" : "var(--neutral-foreground-rest)");"
+                        @onclick="@(() => SwitchQrDialogMode(true))">
+                    🔢 Código de Pareamento
+                </button>
+            </div>
+
+            @if (!_qrDialogUsePairingCode)
+            {
+                @* QR Code mode *@
+                @if (_loadingQrCode)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalGap="8" Style="width: 100%; padding: 1rem 0;">
+                        <FluentProgressRing Style="width: 32px; height: 32px;" />
+                        <FluentLabel Style="color: var(--neutral-foreground-hint);">Gerando QR Code, aguarde...</FluentLabel>
+                    </FluentStack>
+                }
+                else if (!string.IsNullOrWhiteSpace(_qrCodeError))
+                {
+                    <FluentMessageBar Intent="@MessageIntent.Error" Style="width: 100%;">
+                        @_qrCodeError
+                    </FluentMessageBar>
+                }
+                else if (!string.IsNullOrWhiteSpace(_qrCodeImageUrl) || !string.IsNullOrWhiteSpace(_qrCodeImageDataUrl))
+                {
+                    <FluentMessageBar Intent="@MessageIntent.Info" Style="width: 100%;">
+                        Escaneie este QR Code no WhatsApp para conectar a instância.
+                    </FluentMessageBar>
+                    <div style="display: flex; justify-content: center; width: 100%;">
+                        <img id="qr-code-img"
+                             alt="QR Code WhatsApp"
+                             src="@(_qrCodeImageUrl ?? _qrCodeImageDataUrl ?? string.Empty)"
+                             style="width: min(300px, 100%); height: auto; border-radius: 8px; border: 1px solid var(--neutral-stroke-divider-rest);" />
+                    </div>
+                }
+                else
+                {
+                    <FluentMessageBar Intent="@MessageIntent.Warning" Style="width: 100%;">
+                        Não foi possível gerar o QR Code. Tente recarregar ou use o Código de Pareamento.
+                    </FluentMessageBar>
+                }
+            }
+            else
+            {
+                @* Pairing code mode *@
+                <FluentMessageBar Intent="@MessageIntent.Info" Style="width: 100%;">
+                    Insira seu número e clique em "Gerar código". Depois abra o WhatsApp →
+                    Configurações → Aparelhos conectados → Conectar com número.
+                </FluentMessageBar>
+
+                <FluentTextField Value="@_pairingCodePhone"
+                                 ValueChanged="OnPairingCodePhoneChanged"
+                                 Immediate="true"
+                                 Label="Número de telefone *"
+                                 Placeholder="+55 (62) 99988-0839"
+                                 Style="width: 100%;"
+                                 Disabled="@_loadingPairingCode" />
+
+                @if (!string.IsNullOrWhiteSpace(_pairingCodeError))
+                {
+                    <FluentMessageBar Intent="@MessageIntent.Error" Style="width: 100%;">
+                        @_pairingCodeError
+                    </FluentMessageBar>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_pairingCode))
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalGap="8"
+                                 Style="width: 100%; padding: 1rem; background: var(--neutral-layer-2); border-radius: 8px; text-align: center;">
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); font-size: 0.85rem;">
+                            Código de pareamento:
+                        </FluentLabel>
+                        <FluentLabel Typo="Typography.H3"
+                                     Style="font-size: 2rem; font-weight: 700; letter-spacing: 0.25rem; color: var(--accent-fill-rest); font-family: monospace;">
+                            @_pairingCode
+                        </FluentLabel>
+                        <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint); font-size: 0.8rem;">
+                            Digite este código no WhatsApp. O código expira em alguns minutos.
+                        </FluentLabel>
+                    </FluentStack>
+                }
+
+                <FluentButton Appearance="Appearance.Accent"
+                              @onclick="GeneratePairingCodeAsync"
+                              Disabled="@(_loadingPairingCode || string.IsNullOrWhiteSpace(_pairingCodePhone))"
+                              Style="width: 100%;">
+                    @if (_loadingPairingCode)
+                    {
+                        <FluentProgressRing Style="width: 14px; height: 14px; margin-right: 6px;" />
+                        <span>Gerando...</span>
+                    }
+                    else
+                    {
+                        <span>Gerar código</span>
+                    }
+                </FluentButton>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        @if (!_qrDialogUsePairingCode)
+        {
+            <FluentButton Appearance="Appearance.Outline" @onclick="ReloadQrCodeAsync" Disabled="@_loadingQrCode">
+                @if (_loadingQrCode)
+                {
+                    <FluentProgressRing Style="width: 14px; height: 14px; margin-right: 6px;" />
+                }
+                Recarregar QR Code
+            </FluentButton>
+        }
+        <FluentButton Appearance="Appearance.Accent" @onclick="CloseQrCodeDialog">
+            Fechar
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<FluentDialog Modal="true" Hidden="@(!_showInstanceExistsDialog)" TrapFocus="true"
+              @ondialogdismiss="CancelRecreateExistingInstance"
+              Style="max-width: 520px; width: 95%; background: var(--neutral-layer-1); color: var(--neutral-foreground-rest);">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Warning)" />
+                <FluentLabel Typo="Typography.Subject">Instância já existente</FluentLabel>
+            </FluentStack>
+            <div style="margin-left: auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CancelRecreateExistingInstance" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="padding: 0.5rem 0;">
+            <FluentMessageBar Intent="@MessageIntent.Info" Style="width: 100%;">
+                A instância <strong>@GetInstanceDisplayValue(Model.InstanceName)</strong> já existe na Evolution Go.
+            </FluentMessageBar>
+            <FluentLabel>
+                Deseja usar a instância existente para gerar o QR Code agora ou remover e recriar a instância?
+            </FluentLabel>
+            <FluentLabel Style="font-size: 0.85em; color: var(--neutral-foreground-hint);">
+                Remover e recriar pode desconectar sessões ativas e exigir novo pareamento completo.
+            </FluentLabel>
+            @if (!string.IsNullOrWhiteSpace(_instanceExistsDialogError))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error" Style="width: 100%;">
+                    @_instanceExistsDialogError
+                </FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ContinueWithExistingInstanceAsync" Disabled="@_recreatingExistingInstance">
+            Usar instância existente
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Outline" @onclick="RecreateExistingInstanceAsync" Disabled="@_recreatingExistingInstance">
+            @if (_recreatingExistingInstance)
+            {
+                <FluentProgressRing Style="width: 14px; height: 14px; margin-right: 6px;" />
+            }
+            Remover e recriar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Neutral" @onclick="CancelRecreateExistingInstance" Disabled="@_recreatingExistingInstance">
+            Cancelar
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<FluentDialog Modal="true" Hidden="@(!_showHelpDialog)" TrapFocus="true"
+              @ondialogdismiss="CloseHelpDialog"
+              Style="max-width: 680px; width: 95%; background: var(--neutral-layer-1); color: var(--neutral-foreground-rest);">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.QuestionCircle)" />
+                <FluentLabel Typo="Typography.Subject">@_helpDialogTitle</FluentLabel>
+            </FluentStack>
+            <div style="margin-left: auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseHelpDialog" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="padding: 0.5rem 0;">
+            <FluentLabel Style="line-height: 1.5;">@_helpDialogDescription</FluentLabel>
+            <ol style="margin: 0; padding-left: 1.2rem; line-height: 1.5;">
+                @foreach (var step in _helpDialogSteps)
+                {
+                    <li>@step</li>
+                }
+            </ol>
+            @if (!string.IsNullOrWhiteSpace(_helpDialogTip))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Info">
+                    @_helpDialogTip
+                </FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+</FluentDialog>
+
+<FluentDialog Modal="true" Hidden="@(!_showInstanceConfirmDialog)" TrapFocus="true"
+              @ondialogdismiss="CancelInstanceCreate"
+              Style="max-width: 480px; width: 95%; background: var(--neutral-layer-1); color: var(--neutral-foreground-rest);">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Warning)" />
+                <FluentLabel Typo="Typography.Subject">Instância não encontrada</FluentLabel>
+            </FluentStack>
+            <div style="margin-left: auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CancelInstanceCreate" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="padding: 0.5rem 0;">
+            <FluentMessageBar Intent="@MessageIntent.Warning" Style="width: 100%;">
+                A instância <strong>@GetInstanceDisplayValue(Model.InstanceName)</strong> não foi encontrada na Evolution Go.
+            </FluentMessageBar>
+            <FluentLabel>
+                Deseja criar a instância agora? Ela será criada com todas as permissões de mensagens e mídias necessárias para o funcionamento do PharmazapPlus.
+            </FluentLabel>
+            <FluentLabel Style="font-size: 0.85em; color: var(--neutral-foreground-hint);">
+                Se recusar, o canal não será salvo.
+            </FluentLabel>
+            @if (!string.IsNullOrWhiteSpace(_instanceCreateError))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error" Style="width: 100%;">
+                    @_instanceCreateError
+                </FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ConfirmAndCreateInstance" Disabled="@_instanceCreating">
+            @if (_instanceCreating)
+            {
+                <FluentProgressRing Style="width: 14px; height: 14px; margin-right: 6px;" />
+            }
+            Criar instância e salvar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Neutral" @onclick="CancelInstanceCreate" Disabled="@_instanceCreating">
+            Cancelar
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter, EditorRequired] public ChannelCreateRequest Model { get; set; } = new();
+    [Parameter] public bool IsSubmitting { get; set; }
+    [Parameter] public EventCallback<ChannelCreateRequest> OnValidSubmit { get; set; }
+    [Parameter] public IChannelService? ChannelService { get; set; }
+    [Parameter] public string? CurrentFarmaciaId { get; set; }
+    [Parameter] public string? CurrentFarmaciaNome { get; set; }
+    [Parameter] public int? ChannelId { get; set; }
+
+    private bool IsAccessTokenRequired => Model.Type == ChannelType.WhatsApp && Model.IsOfficial;
+    private bool IsIntegrationSelectorDisabled => Model.Type == ChannelType.Instagram;
+    private string SelectedFarmaciaValue => string.IsNullOrWhiteSpace(CurrentFarmaciaId) ? "__current__" : CurrentFarmaciaId!;
+    private string SelectedFarmaciaLabel => string.IsNullOrWhiteSpace(CurrentFarmaciaNome)
+        ? (string.IsNullOrWhiteSpace(CurrentFarmaciaId) ? "Farmácia atual" : $"Farmácia #{CurrentFarmaciaId}")
+        : (string.IsNullOrWhiteSpace(CurrentFarmaciaId) ? CurrentFarmaciaNome! : $"{CurrentFarmaciaNome} (ID {CurrentFarmaciaId})");
+    private string _nonOfficialEvolutionApiUrl = "http://localhost:8080";
+
+    private enum HelpTopic
+    {
+        MetaAppId,
+        MetaAppSecret,
+        PhoneNumberId,
+        BusinessAccountId,
+        InstagramBusinessId,
+        AccessToken,
+        ApiUrl,
+        ApiKey,
+        InstanceName
+    }
+
+    private string _selectedType = "1";
+    private string _isOfficial = "true";
+    private string _metaConfigSource = ((int)MetaConfigSource.Own).ToString();
+    private bool _showHelpDialog;
+    private string _helpDialogTitle = string.Empty;
+    private string _helpDialogDescription = string.Empty;
+    private string _helpDialogTip = string.Empty;
+    private List<string> _helpDialogSteps = new();
+    private readonly string[] MetaWizardSteps = ["Conectar", "Confirmar dados", "Salvar canal"];
+    private string _metaWizardMode = ((int)MetaAppMode.Production).ToString();
+    private int _metaWizardStep;
+    private const string MetaAppDashboardUrl = "https://developers.facebook.com/apps/";
+    private bool ShowMetaWizard => Model.Type == ChannelType.Instagram || (Model.Type == ChannelType.WhatsApp && Model.IsOfficial);
+    private string MetaChannelLabel => Model.Type == ChannelType.Instagram ? "Instagram" : "WhatsApp";
+    private bool IsInstagramWizard => Model.Type == ChannelType.Instagram;
+    private bool UsesOwnMetaConfig => Model.MetaConfigSource == MetaConfigSource.Own;
+    private bool UsesCentralMetaConfig => Model.MetaConfigSource == MetaConfigSource.PharmazapCentral;
+    private bool HasImportedMetaCredentials => IsInstagramWizard
+        ? !string.IsNullOrWhiteSpace(Model.InstagramBusinessId) || !string.IsNullOrWhiteSpace(Model.AccessToken)
+        : !string.IsNullOrWhiteSpace(Model.PhoneNumberId) || !string.IsNullOrWhiteSpace(Model.BusinessAccountId) || !string.IsNullOrWhiteSpace(Model.AccessToken);
+    private MessageIntent MetaCredentialsMessageIntent => HasImportedMetaCredentials ? MessageIntent.Success : MessageIntent.Info;
+    private string MetaCredentialsMessage => HasImportedMetaCredentials
+        ? "Dados trazidos da Meta. Confira as informações abaixo e ajuste apenas se necessário antes de salvar."
+        : "Se a conexão não preencher tudo automaticamente, você ainda pode informar os dados manualmente abaixo.";
+    private MessageIntent MetaStepMessageIntent => _metaWizardStep == 1
+        ? MetaCredentialsMessageIntent
+        : MessageIntent.Info;
+    private string MetaStepMessage => _metaWizardStep == 1
+        ? MetaCredentialsMessage
+        : MetaWizardReviewMessage;
+    private string MetaWizardIntroMessage => UsesOwnMetaConfig
+        ? IsInstagramWizard
+            ? "Use o App ID e o App Secret do app Meta da farmácia para conectar o Instagram profissional com o próprio aplicativo do cliente."
+            : "Use o App ID e o App Secret do app Meta da farmácia para conectar o WhatsApp Business com o próprio aplicativo do cliente."
+        : IsInstagramWizard
+            ? "Entre com o Facebook da farmácia para localizar a conta profissional do Instagram e preencher os campos automaticamente."
+            : "Entre com o Facebook da farmácia para localizar o número e a conta do WhatsApp Business e preencher os campos automaticamente.";
+    private string MetaWizardReviewMessage => IsInstagramWizard
+        ? "Antes de salvar, confirme se a conta do Instagram encontrada pertence à farmácia correta e se a permissão de mensagens está liberada."
+        : "Antes de salvar, confirme se o número e a conta do WhatsApp Business encontrados pertencem à farmácia correta.";
+    private bool _metaOAuthInProgress;
+    private string? _metaOAuthMessage;
+    private MessageIntent _metaOAuthMessageIntent = MessageIntent.Info;
+    private string? _apiOrigin;
+    private DotNetObjectReference<ChannelForm>? _metaOAuthDotNetRef;
+    private bool _metaOAuthListenerRegistered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            // On edit, if the user has an existing instance name (e.g., landed on
+            // /channels/edit/{id}), auto-run the status validation once so the Save
+            // button is enabled when the instance is already connected — avoiding
+            // forcing them to re-scan the QR Code for routine edits.
+            await TryAutoValidateInstanceStatusAsync();
+            return;
+        }
+
+        _apiOrigin = TryGetOrigin(Configuration["Application:ApiUrl"]);
+        await RegisterMetaOAuthListenerAsync();
+        await TryAutoValidateInstanceStatusAsync();
+    }
+
+    private async Task TryAutoValidateInstanceStatusAsync()
+    {
+        if (!ChannelId.HasValue) return;
+        if (!RequiresInstanceConnection) return;
+        if (_instanceConnected) return;
+        if (_validatingInstanceStatus) return;
+        if (string.IsNullOrWhiteSpace(Model.InstanceName)) return;
+
+        var instanceName = Model.InstanceName;
+        if (string.Equals(instanceName, _lastAutoValidatedInstanceName, StringComparison.Ordinal))
+            return;
+
+        _lastAutoValidatedInstanceName = instanceName;
+        await ValidateInstanceStatusAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        var configuredNonOfficialApiUrl = Configuration["WhatsApp:NonOfficialApiUrl"];
+        if (!string.IsNullOrWhiteSpace(configuredNonOfficialApiUrl))
+            _nonOfficialEvolutionApiUrl = configuredNonOfficialApiUrl.Trim();
+
+        _selectedType = ((int)Model.Type).ToString();
+        _isOfficial = Model.IsOfficial ? "true" : "false";
+
+        if (Model.Type == ChannelType.Instagram)
+        {
+            Model.IsOfficial = true;
+            _isOfficial = "true";
+        }
+
+        if (Model.Type != ChannelType.WhatsApp || Model.IsOfficial)
+        {
+            ResetInstanceOptions();
+        }
+        else
+        {
+            EnsureNonOfficialDefaults();
+            Model.InstanceName = SanitizeInstanceIdentifier(Model.InstanceName);
+        }
+
+        EnsureMetaConfigSource();
+        EnsureMetaAppMode();
+
+        if (!ShowMetaWizard)
+        {
+            ResetMetaWizard();
+        }
+        else if (_metaWizardStep >= MetaWizardSteps.Length)
+        {
+            ResetMetaWizard();
+        }
+    }
+
+    // --- Instance confirm dialog state ---
+    private bool _showInstanceConfirmDialog;
+    private bool _instanceValidating;
+    private bool _instanceCreating;
+    private string? _instanceCreateError;
+    private string? _instanceOptionsMessage;
+    private MessageIntent _instanceOptionsMessageIntent = MessageIntent.Info;
+    private bool _showQrCodeDialog;
+    private bool _loadingQrCode;
+    private string? _qrCodeImageUrl;
+    private string? _qrCodeImageDataUrl;
+    private string? _qrCodeError;
+    // Pairing code mode state
+    private bool _qrDialogUsePairingCode;
+    private string _pairingCodePhone = "";
+    private bool _loadingPairingCode;
+    private string? _pairingCode;
+    private string? _pairingCodeError;
+    private bool _showInstanceExistsDialog;
+    private bool _recreatingExistingInstance;
+    private string? _instanceExistsDialogError;
+    private bool _validatingInstanceStatus;
+    private string? _instanceStatusMessage;
+    private MessageIntent _instanceStatusMessageIntent = MessageIntent.Info;
+    private string? _instanceValidationError;
+    // Set to true only after "Validar status" confirms the Evolution instance is connected
+    // (OPEN/CONNECTED). Used to gate the Save button in the non-official WhatsApp flow so
+    // channels cannot be persisted before the QR Code has been scanned and validated.
+    private bool _instanceConnected;
+    // Tracks the last instance name for which an auto-validation was performed on the edit
+    // screen. Avoids re-triggering the auto-validation on every render.
+    private string? _lastAutoValidatedInstanceName;
+    private bool CanGenerateQrCode =>
+        ChannelService != null &&
+        Model.Type == ChannelType.WhatsApp &&
+        !Model.IsOfficial &&
+        !string.IsNullOrWhiteSpace(Model.InstanceName);
+    private bool CanReloadInstanceOptions =>
+        ChannelService != null &&
+        Model.Type == ChannelType.WhatsApp &&
+        !Model.IsOfficial &&
+        !string.IsNullOrWhiteSpace(Model.InstanceName);
+    // Non-official WhatsApp channels can only be saved after the Evolution instance has been
+    // validated as connected (QR Code scanned successfully). Other channel types skip this gate.
+    private bool RequiresInstanceConnection =>
+        Model.Type == ChannelType.WhatsApp && !Model.IsOfficial;
+    private bool CanSubmitNonOfficialWhatsApp =>
+        !RequiresInstanceConnection || _instanceConnected;
+    private Task HandleSubmit() => ValidateAndSubmitAsync();
+
+    private async Task ValidateAndSubmitAsync()
+    {
+        // For non-official WhatsApp channels, the Evolution instance must be validated
+        // as connected (QR Code scanned) before saving. This mirrors the button disabled
+        // state and prevents accidental submissions via Enter key.
+        if (RequiresInstanceConnection && !_instanceConnected)
+        {
+            _instanceStatusMessageIntent = MessageIntent.Warning;
+            _instanceStatusMessage = "Gere o QR Code, escaneie no WhatsApp e clique em \"Validar status\" para confirmar a conexão antes de salvar.";
+            ToastService.ShowWarning(_instanceStatusMessage);
+            StateHasChanged();
+            return;
+        }
+
+        // For non-official WhatsApp channels, validate that the Evolution Go instance exists
+        // before allowing the channel to be saved.
+        if (Model.Type == ChannelType.WhatsApp && !Model.IsOfficial && ChannelService != null &&
+            !string.IsNullOrWhiteSpace(Model.InstanceName) &&
+            CanReloadInstanceOptions)
+        {
+            EnsureNonOfficialDefaults();
+            _instanceValidating = true;
+            _instanceCreateError = null;
+            StateHasChanged();
+
+            InstanceInfoResult info;
+            try
+            {
+                info = await ChannelService.CheckInstanceExistsAsync(
+                    Model.InstanceName,
+                    Model.ApiUrl ?? string.Empty,
+                    string.Empty);
+            }
+            finally
+            {
+                _instanceValidating = false;
+                StateHasChanged();
+            }
+
+            if (!info.Success)
+            {
+                // Cannot reach Evolution Go — let the backend handle the error during save
+                await OnValidSubmit.InvokeAsync(Model);
+                return;
+            }
+
+            if (!info.Exists)
+            {
+                _instanceOptionsMessageIntent = MessageIntent.Warning;
+                _instanceOptionsMessage = "Instância não encontrada na Evolution. Você pode criar agora e continuar.";
+                // Show confirmation dialog to offer creating the instance
+                _showInstanceConfirmDialog = true;
+                StateHasChanged();
+                return;
+            }
+
+            // Block save on new channel registration if the Evolution instance is already
+            // connected. This prevents a new canal from hijacking an instance that is
+            // actively paired with another number. Editing an existing channel is allowed
+            // since it already owns the instance.
+            if (!ChannelId.HasValue && IsEvolutionStatusConnected(info.Status))
+            {
+                _instanceValidationError = "Esta instância já está conectada a outro número de WhatsApp. " +
+                    "Para usar este identificador, remova o QR Code do outro número primeiro.";
+                _instanceStatusMessageIntent = MessageIntent.Error;
+                _instanceStatusMessage = _instanceValidationError;
+                ToastService.ShowError(_instanceValidationError);
+                StateHasChanged();
+                return;
+            }
+
+            _instanceOptionsMessageIntent = MessageIntent.Success;
+            _instanceOptionsMessage = IsEvolutionStatusConnected(info.Status)
+                ? "Instância encontrada e conectada. Pronto para salvar o canal."
+                : $"Instância encontrada ({GetEvolutionStatusLabel(info.Status)}).";
+        }
+
+        await OnValidSubmit.InvokeAsync(Model);
+    }
+
+    private async Task ConfirmAndCreateInstance()
+    {
+        if (ChannelService == null) return;
+
+        _instanceCreating = true;
+        _instanceCreateError = null;
+        StateHasChanged();
+
+        try
+        {
+            EnsureNonOfficialDefaults();
+            var result = await ChannelService.EnsureInstanceCreatedAsync(
+                Model.InstanceName!,
+                Model.ApiUrl ?? string.Empty);
+            if (result.Success)
+            {
+                _showInstanceConfirmDialog = false;
+                await OnValidSubmit.InvokeAsync(Model);
+            }
+            else
+            {
+                _instanceCreateError = result.Error ?? "Não foi possível criar a instância. Verifique as configurações e tente novamente.";
+            }
+        }
+        catch (Exception)
+        {
+            _instanceCreateError = "Erro ao criar a instância. Verifique as configurações e tente novamente.";
+        }
+        finally
+        {
+            _instanceCreating = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelInstanceCreate()
+    {
+        _showInstanceConfirmDialog = false;
+        _instanceCreateError = null;
+    }
+
+    private async Task GenerateQrCodeAsync()
+    {
+        if (!CanGenerateQrCode || ChannelService == null)
+            return;
+
+        EnsureNonOfficialDefaults();
+        _loadingQrCode = true;
+        _qrCodeError = null;
+        _qrCodeImageUrl = null;
+        _qrCodeImageDataUrl = null;
+        _showQrCodeDialog = false;
+        StateHasChanged();
+
+        var ensureResult = await ChannelService.EnsureInstanceCreatedAsync(
+            Model.InstanceName!,
+            Model.ApiUrl ?? string.Empty);
+
+        if (ensureResult.Success && ensureResult.AlreadyExists)
+        {
+            _loadingQrCode = false;
+            _showInstanceExistsDialog = true;
+            _instanceExistsDialogError = null;
+            StateHasChanged();
+            return;
+        }
+
+        if (!ensureResult.Success)
+        {
+            _loadingQrCode = false;
+            _qrCodeError = ensureResult.Error ?? "Falha ao preparar a instância na Evolution.";
+            _showQrCodeDialog = true;
+            StateHasChanged();
+            return;
+        }
+
+        await GenerateQrCodeFromCurrentInstanceAsync();
+    }
+
+    private async Task GenerateQrCodeFromCurrentInstanceAsync()
+    {
+        if (ChannelService == null || string.IsNullOrWhiteSpace(Model.InstanceName))
+        {
+            _loadingQrCode = false;
+            StateHasChanged();
+            return;
+        }
+
+        // Show the dialog immediately with a loading indicator, instead of leaving the
+        // user without any feedback while the QR Code is being fetched/retried.
+        _loadingQrCode = true;
+        _qrCodeError = null;
+        _qrCodeImageUrl = null;
+        _qrCodeImageDataUrl = null;
+        _showQrCodeDialog = true;
+        StateHasChanged();
+
+        // The QR Code may not be immediately available after a fresh instance create
+        // (especially in the "Remover e Criar" flow, where Evolution needs a few extra
+        // seconds to establish the Baileys connection before a QR Code can be issued).
+        // Retry several times with a short delay before showing an error to the user
+        // (8 attempts × 1.5s delay = up to ~12s total wait before giving up; the user
+        // can also use "Recarregar QR Code" to retry manually afterwards).
+        QrCodeResult qrResult = new() { Success = false };
+        const int maxAttempts = 8;
+        Logger.LogInformation("Iniciando geração de QR Code para a instância {InstanceName}. MaxAttempts={MaxAttempts}", Model.InstanceName, maxAttempts);
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            Logger.LogDebug("Solicitando QR Code da Evolution. Instância={InstanceName} Tentativa={Attempt}/{MaxAttempts}", Model.InstanceName, attempt, maxAttempts);
+            qrResult = await ChannelService.GenerateQrCodeAsync(
+                Model.InstanceName!,
+                Model.ApiUrl ?? string.Empty,
+                string.Empty);
+
+            if (qrResult.AlreadyConnected)
+                break;
+
+            if (qrResult.Success && (!string.IsNullOrWhiteSpace(qrResult.ImageUrl) || !string.IsNullOrWhiteSpace(qrResult.Base64)))
+                break;
+
+            Logger.LogDebug(
+                "QR Code ainda indisponível. Instância={InstanceName} Tentativa={Attempt}/{MaxAttempts} Erro={Error}",
+                Model.InstanceName,
+                attempt,
+                maxAttempts,
+                qrResult.Error ?? "(sem erro informado)");
+
+            if (attempt < maxAttempts)
+                await Task.Delay(1500);
+        }
+
+        _loadingQrCode = false;
+        if (qrResult.AlreadyConnected)
+        {
+            _showQrCodeDialog = false;
+            _instanceConnected = true;
+            _instanceStatusMessageIntent = MessageIntent.Success;
+            _instanceStatusMessage = "Instância já está conectada. Você pode salvar o canal.";
+            StateHasChanged();
+            return;
+        }
+
+        if (!qrResult.Success || (string.IsNullOrWhiteSpace(qrResult.ImageUrl) && string.IsNullOrWhiteSpace(qrResult.Base64)))
+        {
+            Logger.LogWarning(
+                "Falha ao gerar QR Code para a instância {InstanceName}. Erro={Error}",
+                Model.InstanceName,
+                qrResult.Error ?? "(sem erro informado)");
+            _qrCodeError = qrResult.Error ?? "Não foi possível gerar o QR Code.";
+            _showQrCodeDialog = true;
+            StateHasChanged();
+            return;
+        }
+
+        _qrCodeImageUrl = qrResult.ImageUrl;
+        _qrCodeImageDataUrl = string.IsNullOrWhiteSpace(_qrCodeImageUrl)
+            ? ToImageDataUrl(qrResult.Base64)
+            : null;
+        Logger.LogInformation(
+            "QR Code pronto para {InstanceName}. ImageUrl={ImageUrl} Base64Length={Base64Length}",
+            Model.InstanceName,
+            _qrCodeImageUrl ?? "(none)",
+            qrResult.Base64?.Length ?? 0);
+        _showQrCodeDialog = true;
+        _instanceStatusMessageIntent = MessageIntent.Info;
+        _instanceStatusMessage = "QR Code gerado. Escaneie no WhatsApp para conectar a instância.";
+        StateHasChanged();
+    }
+
+    private async Task ContinueWithExistingInstanceAsync()
+    {
+        if (ChannelService == null || string.IsNullOrWhiteSpace(Model.InstanceName))
+            return;
+
+        _showInstanceExistsDialog = false;
+        _instanceExistsDialogError = null;
+        _loadingQrCode = true;
+        _qrCodeError = null;
+        _qrCodeImageUrl = null;
+        _qrCodeImageDataUrl = null;
+        StateHasChanged();
+
+        await GenerateQrCodeFromCurrentInstanceAsync();
+    }
+
+    private async Task RecreateExistingInstanceAsync()
+    {
+        if (ChannelService == null || string.IsNullOrWhiteSpace(Model.InstanceName))
+            return;
+
+        EnsureNonOfficialDefaults();
+        _recreatingExistingInstance = true;
+        _instanceExistsDialogError = null;
+        StateHasChanged();
+
+        var result = await ChannelService.EnsureInstanceCreatedAsync(
+            Model.InstanceName!,
+            Model.ApiUrl ?? string.Empty,
+            forceRecreate: true);
+
+        _recreatingExistingInstance = false;
+
+        if (!result.Success)
+        {
+            _instanceExistsDialogError = result.Error ?? "Não foi possível remover e recriar a instância.";
+            StateHasChanged();
+            return;
+        }
+
+        _showInstanceExistsDialog = false;
+        _loadingQrCode = true;
+        _qrCodeError = null;
+        _qrCodeImageUrl = null;
+        _qrCodeImageDataUrl = null;
+        StateHasChanged();
+
+        await GenerateQrCodeFromCurrentInstanceAsync();
+    }
+
+    private void CancelRecreateExistingInstance()
+    {
+        _showInstanceExistsDialog = false;
+        _instanceExistsDialogError = null;
+        _recreatingExistingInstance = false;
+    }
+
+    private async Task ValidateInstanceStatusAsync()
+    {
+        if (!CanReloadInstanceOptions || ChannelService == null || string.IsNullOrWhiteSpace(Model.InstanceName))
+            return;
+
+        EnsureNonOfficialDefaults();
+        _validatingInstanceStatus = true;
+        _instanceStatusMessage = null;
+        _instanceConnected = false;
+        StateHasChanged();
+
+        var result = await ChannelService.GetWhatsAppStatusAsync(
+            Model.InstanceName!,
+            Model.ApiUrl ?? string.Empty,
+            string.Empty);
+
+        _validatingInstanceStatus = false;
+        if (!result.Success)
+        {
+            _instanceStatusMessageIntent = MessageIntent.Error;
+            _instanceStatusMessage = result.Error ?? "Não foi possível validar o status da instância.";
+            _instanceConnected = false;
+            StateHasChanged();
+            return;
+        }
+
+        var isConnected = IsEvolutionStatusConnected(result.Status);
+        _instanceConnected = isConnected;
+        _instanceStatusMessageIntent = isConnected ? MessageIntent.Success : MessageIntent.Info;
+        _instanceStatusMessage = isConnected
+            ? $"Instância conectada ({GetEvolutionStatusLabel(result.Status)}). Você já pode salvar o canal."
+            : $"Status atual da instância: {GetEvolutionStatusLabel(result.Status)}. Escaneie o QR Code e valide novamente para habilitar o botão Salvar.";
+        StateHasChanged();
+    }
+
+    private void CloseQrCodeDialog()
+    {
+        _showQrCodeDialog = false;
+    }
+
+    private void SwitchQrDialogMode(bool usePairingCode)
+    {
+        _qrDialogUsePairingCode = usePairingCode;
+        _pairingCode = null;
+        _pairingCodeError = null;
+    }
+
+    private async Task GeneratePairingCodeAsync()
+    {
+        if (ChannelService == null || string.IsNullOrWhiteSpace(_pairingCodePhone))
+            return;
+
+        var phoneDigits = _pairingCodePhone.SanitizeDigits(13);
+        if (!IsValidBrazilianPairingPhone(phoneDigits))
+        {
+            _pairingCodeError = "Informe o telefone completo com DDI 55, DDD e número (ex.: +55 (62) 99988-0839).";
+            StateHasChanged();
+            return;
+        }
+
+        EnsureNonOfficialDefaults();
+        Logger.LogInformation(
+            "Iniciando geração de código de pareamento para a instância {InstanceName}. PhoneLength={PhoneLength}",
+            Model.InstanceName,
+            phoneDigits.Length);
+        _loadingPairingCode = true;
+        _pairingCode = null;
+        _pairingCodeError = null;
+        StateHasChanged();
+
+        var result = await ChannelService.GeneratePairingCodeAsync(
+            Model.InstanceName!,
+            Model.ApiUrl ?? string.Empty,
+            string.Empty,
+            phoneDigits);
+
+        _loadingPairingCode = false;
+        if (result.Success)
+        {
+            Logger.LogInformation(
+                "Código de pareamento gerado para {InstanceName}. Code={Code}",
+                Model.InstanceName,
+                result.Code);
+            _pairingCode = result.Code;
+        }
+        else
+        {
+            Logger.LogWarning(
+                "Falha ao gerar código de pareamento para {InstanceName}. Erro={Error}",
+                Model.InstanceName,
+                result.Error ?? "(sem erro informado)");
+            _pairingCodeError = result.Error ?? "Não foi possível gerar o código de pareamento.";
+        }
+
+        StateHasChanged();
+    }
+
+    private void OnPairingCodePhoneChanged(string? value)
+    {
+        _pairingCodePhone = FormatBrazilianPairingPhone(value);
+        _pairingCodeError = null;
+    }
+
+    private static bool IsValidBrazilianPairingPhone(string digits) =>
+        digits.StartsWith("55", StringComparison.Ordinal) &&
+        digits.Length is 12 or 13;
+
+    private static string FormatBrazilianPairingPhone(string? value)
+    {
+        var digits = new string((value ?? string.Empty).Where(char.IsDigit).Take(13).ToArray());
+        if (digits.Length == 0)
+            return string.Empty;
+
+        if (digits.Length <= 2)
+            return $"+{digits}";
+
+        var countryCode = digits[..2];
+        var areaCode = digits.Length <= 4 ? digits[2..] : digits.Substring(2, 2);
+        var localNumber = digits.Length <= 4 ? string.Empty : digits[4..];
+        if (localNumber.Length <= 5)
+            return $"+{countryCode} ({areaCode}) {localNumber}".TrimEnd();
+
+        return $"+{countryCode} ({areaCode}) {localNumber[..5]}-{localNumber[5..]}";
+    }
+
+    private async Task ReloadQrCodeAsync()
+    {
+        if (_loadingQrCode)
+            return;
+
+        EnsureNonOfficialDefaults();
+        await GenerateQrCodeFromCurrentInstanceAsync();
+    }
+
+    private void OnTypeChanged(string? value)
+    {
+        _selectedType = value ?? "1";
+        if (int.TryParse(_selectedType, out var typeValue) && Enum.IsDefined(typeof(ChannelType), typeValue))
+        {
+            Model.Type = (ChannelType)typeValue;
+        }
+
+        if (Model.Type == ChannelType.Instagram)
+        {
+            Model.IsOfficial = true;
+            _isOfficial = "true";
+            ResetMetaWizard();
+        }
+        else if (Model.Type == ChannelType.WhatsApp && !Model.IsOfficial)
+        {
+            EnsureNonOfficialDefaults();
+        }
+
+        if (Model.Type != ChannelType.WhatsApp || Model.IsOfficial)
+        {
+            ResetInstanceOptions();
+        }
+
+    }
+
+    private void OnOfficialChanged(string? value)
+    {
+        _isOfficial = value ?? "true";
+        Model.IsOfficial = bool.TryParse(_isOfficial, out var parsed) && parsed;
+
+        if (Model.IsOfficial)
+        {
+            ResetInstanceOptions();
+            if (Model.Type == ChannelType.WhatsApp)
+            {
+                ResetMetaWizard();
+            }
+        }
+        else if (Model.Type == ChannelType.WhatsApp)
+        {
+            EnsureNonOfficialDefaults();
+        }
+    }
+
+    private async Task BeginMetaOAuthAsync()
+    {
+        if (ChannelService == null)
+        {
+            await JSRuntime.InvokeVoidAsync("metaOAuthInterop.closePendingPopup");
+            return;
+        }
+
+        _metaOAuthInProgress = true;
+        _metaOAuthMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            if (UsesOwnMetaConfig)
+            {
+                if (string.IsNullOrWhiteSpace(Model.MetaAppId))
+                {
+                    const string appIdMessage = "Informe o Meta App ID do app da farmácia antes de conectar.";
+                    await JSRuntime.InvokeVoidAsync("metaOAuthInterop.showPendingPopupError", appIdMessage);
+                    _metaOAuthMessageIntent = MessageIntent.Warning;
+                    _metaOAuthMessage = appIdMessage;
+                    ToastService.ShowWarning(appIdMessage);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(Model.MetaAppSecret) && !Model.HasPersistedMetaAppSecret)
+                {
+                    const string appSecretMessage = "Informe o Meta App Secret do app da farmácia antes de conectar.";
+                    await JSRuntime.InvokeVoidAsync("metaOAuthInterop.showPendingPopupError", appSecretMessage);
+                    _metaOAuthMessageIntent = MessageIntent.Warning;
+                    _metaOAuthMessage = appSecretMessage;
+                    ToastService.ShowWarning(appSecretMessage);
+                    return;
+                }
+            }
+
+            var result = await ChannelService.StartMetaOAuthAsync(
+                IsInstagramWizard ? ChannelType.Instagram : ChannelType.WhatsApp,
+                Model.MetaConfigSource,
+                Model.MetaAppMode,
+                Model.MetaAppId,
+                Model.MetaAppSecret,
+                ChannelId);
+
+            if (!result.Success || string.IsNullOrWhiteSpace(result.AuthorizationUrl))
+            {
+                var friendlyMessage = NormalizeMetaOAuthStartMessage(result.Error ?? result.Message);
+                await JSRuntime.InvokeVoidAsync("metaOAuthInterop.showPendingPopupError", friendlyMessage);
+                _metaOAuthMessageIntent = MessageIntent.Warning;
+                _metaOAuthMessage = friendlyMessage;
+                ToastService.ShowWarning(_metaOAuthMessage);
+                return;
+            }
+
+            _metaOAuthMessageIntent = MessageIntent.Info;
+            _metaOAuthMessage = result.Message ?? "A janela do Facebook foi aberta. Faça login, escolha a conta da farmácia e autorize o acesso para continuar.";
+            await JSRuntime.InvokeVoidAsync("metaOAuthInterop.openPopup", result.AuthorizationUrl);
+            ToastService.ShowInfo(_metaOAuthMessage);
+        }
+        finally
+        {
+            _metaOAuthInProgress = false;
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public async Task HandleMetaOAuthMessage(string payloadJson)
+    {
+        MetaOAuthPopupResult? result;
+        try
+        {
+            result = JsonSerializer.Deserialize<MetaOAuthPopupResult>(payloadJson, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+        }
+        catch
+        {
+            _metaOAuthMessageIntent = MessageIntent.Warning;
+            _metaOAuthMessage = "Recebemos uma resposta inválida da Meta.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (result == null)
+        {
+            _metaOAuthMessageIntent = MessageIntent.Warning;
+            _metaOAuthMessage = "Recebemos uma resposta vazia da Meta.";
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (!result.Success)
+        {
+            _metaOAuthMessageIntent = MessageIntent.Warning;
+            _metaOAuthMessage = string.IsNullOrWhiteSpace(result.Message)
+                ? "A conexão com a Meta não foi concluída."
+                : result.Message;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.AccessToken))
+            Model.AccessToken = result.AccessToken;
+
+        if (IsInstagramWizard)
+        {
+            if (!string.IsNullOrWhiteSpace(result.InstagramBusinessId))
+                Model.InstagramBusinessId = result.InstagramBusinessId;
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(result.PhoneNumberId))
+                Model.PhoneNumberId = result.PhoneNumberId;
+
+            if (!string.IsNullOrWhiteSpace(result.BusinessAccountId))
+                Model.BusinessAccountId = result.BusinessAccountId;
+            else if (!string.IsNullOrWhiteSpace(result.WhatsAppBusinessAccountId))
+                Model.BusinessAccountId = result.WhatsAppBusinessAccountId;
+        }
+
+        Model.IsOfficial = true;
+        _isOfficial = "true";
+        _metaWizardStep = 1;
+        _metaOAuthMessageIntent = MessageIntent.Success;
+        _metaOAuthMessage = string.IsNullOrWhiteSpace(result.Message)
+            ? "Conexão com a Meta concluída."
+            : result.Message;
+        ToastService.ShowSuccess(_metaOAuthMessage);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RegisterMetaOAuthListenerAsync()
+    {
+        if (_metaOAuthListenerRegistered || string.IsNullOrWhiteSpace(_apiOrigin))
+            return;
+
+        _metaOAuthDotNetRef = DotNetObjectReference.Create(this);
+        await JSRuntime.InvokeVoidAsync("metaOAuthInterop.register", _metaOAuthDotNetRef, _apiOrigin);
+        _metaOAuthListenerRegistered = true;
+    }
+
+    private static string? TryGetOrigin(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return null;
+
+        return Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            ? uri.GetLeftPart(UriPartial.Authority)
+            : null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_metaOAuthListenerRegistered)
+            {
+                await JSRuntime.InvokeVoidAsync("metaOAuthInterop.unregister");
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _metaOAuthDotNetRef?.Dispose();
+        }
+    }
+
+    private void NextMetaWizardStep()
+    {
+        if (_metaWizardStep < MetaWizardSteps.Length - 1)
+        {
+            _metaWizardStep++;
+        }
+    }
+
+    private void PreviousMetaWizardStep()
+    {
+        if (_metaWizardStep > 0)
+        {
+            _metaWizardStep--;
+        }
+    }
+
+    private void ResetMetaWizard()
+    {
+        _metaWizardStep = 0;
+        _metaOAuthInProgress = false;
+        _metaOAuthMessage = null;
+        _metaOAuthMessageIntent = MessageIntent.Info;
+    }
+
+    private void OnMetaWizardModeChanged(string? value)
+    {
+        if (int.TryParse(value, out var modeValue) && Enum.IsDefined(typeof(MetaAppMode), modeValue))
+        {
+            Model.MetaAppMode = (MetaAppMode)modeValue;
+            _metaWizardMode = modeValue.ToString();
+            return;
+        }
+
+        EnsureMetaAppMode();
+    }
+
+    private void OnMetaConfigSourceChanged(string? value)
+    {
+        if (int.TryParse(value, out var sourceValue) && Enum.IsDefined(typeof(MetaConfigSource), sourceValue))
+        {
+            Model.MetaConfigSource = (MetaConfigSource)sourceValue;
+            _metaConfigSource = sourceValue.ToString();
+            EnsureMetaAppMode();
+            return;
+        }
+
+        EnsureMetaConfigSource();
+    }
+
+    private void EnsureMetaConfigSource()
+    {
+        if (!ShowMetaWizard)
+            return;
+
+        if (!Enum.IsDefined(typeof(MetaConfigSource), (int)Model.MetaConfigSource))
+        {
+            Model.MetaConfigSource = MetaConfigSource.Own;
+        }
+
+        _metaConfigSource = ((int)Model.MetaConfigSource).ToString();
+    }
+
+    private void EnsureMetaAppMode()
+    {
+        if (!ShowMetaWizard)
+            return;
+
+        if (UsesOwnMetaConfig)
+        {
+            _metaWizardMode = ((int)MetaAppMode.Production).ToString();
+            return;
+        }
+
+        if (!Enum.IsDefined(typeof(MetaAppMode), (int)Model.MetaAppMode))
+        {
+            Model.MetaAppMode = Env.IsDevelopment() ? MetaAppMode.Test : MetaAppMode.Production;
+        }
+
+        _metaWizardMode = ((int)Model.MetaAppMode).ToString();
+    }
+
+    private IEnumerable<string> GetMetaWizardIntroSteps()
+    {
+        if (UsesOwnMetaConfig)
+        {
+            return IsInstagramWizard
+                ? new[]
+                {
+                    "Confirme que a farmácia já possui um app Meta configurado para o Instagram Business Login.",
+                    "Informe o App ID e o App Secret desse app nos campos acima.",
+                    "Clique em Conectar com Facebook e autorize a conta profissional correta para importar os dados."
+                }
+                : new[]
+                {
+                    "Confirme que a farmácia já possui um app Meta configurado para WhatsApp Business.",
+                    "Informe o App ID e o App Secret desse app nos campos acima.",
+                    "Clique em Conectar com Facebook e selecione o ativo correto para importar número, conta e token."
+                };
+        }
+
+        if (IsInstagramWizard)
+        {
+            return new[]
+            {
+                "A conta precisa ser um Instagram profissional vinculado a uma Página do Facebook.",
+                "Clique em Conectar com Facebook e faça login com um administrador da Página da farmácia.",
+                "Autorize o acesso solicitado e volte para conferir os dados preenchidos automaticamente."
+            };
+        }
+
+        return new[]
+        {
+            "Faça login com um administrador do negócio Meta da farmácia.",
+            "Selecione o ativo correto do WhatsApp Business quando o Facebook solicitar autorização.",
+            "Depois da conexão, confira o número e a conta encontrados antes de salvar o canal."
+        };
+    }
+
+    private IEnumerable<string> GetMetaWizardReviewSteps()
+    {
+        if (IsInstagramWizard)
+        {
+            return new[]
+            {
+                "Confira se o Instagram Business ID pertence ao perfil profissional da farmácia.",
+                "Garanta que a conta esteja conectada à Página correta do Facebook.",
+                "Se os dados não vierem automaticamente, você pode editar os campos manualmente antes de salvar."
+            };
+        }
+
+        return new[]
+        {
+            "Confira se o Phone Number ID pertence ao número da farmácia.",
+            "Confirme se o Business Account ID corresponde à conta correta do WhatsApp Business.",
+            "Se necessário, ajuste os campos manualmente antes de salvar o canal."
+        };
+    }
+
+    private string NormalizeMetaOAuthStartMessage(string? message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return "Não foi possível iniciar a conexão com a Meta.";
+
+        if (message.Contains("AppId", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("AppSecret", StringComparison.OrdinalIgnoreCase))
+        {
+            if (UsesOwnMetaConfig)
+            {
+                return "Revise o Meta App ID e o Meta App Secret informados para o app da farmácia e tente novamente.";
+            }
+
+            return $"A conexão oficial do {MetaChannelLabel} ainda não está liberada neste ambiente. Você não precisa criar aplicativo na Meta nem configurar App ID. O Pharmazap usa um app central; basta um administrador concluir essa configuração uma única vez no servidor.";
+        }
+
+        return message;
+    }
+
+    private void OpenHelpDialog(HelpTopic topic)
+    {
+        switch (topic)
+        {
+            case HelpTopic.MetaAppId:
+                _helpDialogTitle = "Como obter o Meta App ID";
+                _helpDialogDescription = "O Meta App ID identifica o aplicativo da farmácia dentro do painel Meta for Developers e será usado para abrir o OAuth com o próprio app do cliente.";
+                _helpDialogSteps = new List<string>
+                {
+                    "Abra o Meta for Developers com a conta administradora da farmácia.",
+                    "Acesse o app que será usado para WhatsApp/Instagram Business Login.",
+                    "Na página principal do app, copie o valor App ID exibido no topo.",
+                    "Cole esse identificador aqui exatamente como aparece no painel."
+                };
+                _helpDialogTip = "Se a farmácia ainda não tiver um app, use o link 'Crie um ?' para abrir o painel de criação da Meta.";
+                break;
+
+            case HelpTopic.MetaAppSecret:
+                _helpDialogTitle = "Como obter o Meta App Secret";
+                _helpDialogDescription = "O Meta App Secret é o segredo do aplicativo da farmácia e será usado apenas pelo backend para trocar o código OAuth por token.";
+                _helpDialogSteps = new List<string>
+                {
+                    "Abra o mesmo app no Meta for Developers.",
+                    "Entre em Configurações > Básico.",
+                    "Revele o App Secret com sua autenticação de segurança.",
+                    "Cole o segredo completo neste campo e mantenha-o em sigilo."
+                };
+                _helpDialogTip = "Quando o segredo já estiver salvo no servidor, você pode deixar o campo em branco para reutilizá-lo.";
+                break;
+
+            case HelpTopic.PhoneNumberId:
+                _helpDialogTitle = "Como obter o Phone Number ID";
+                _helpDialogDescription = "O Phone Number ID identifica o número de WhatsApp conectado à API da Meta e é obrigatório para envio e recebimento de mensagens.";
+                _helpDialogSteps = new List<string>
+                {
+                    "Primeiro tente o botão Conectar com Facebook: normalmente o Pharmazap preenche esse campo automaticamente.",
+                    "Se precisar informar manualmente, acesse o Meta Business Manager ou o Meta for Developers com a conta da farmácia.",
+                    "Na configuração do WhatsApp Business, localize o número conectado.",
+                    "Copie o Phone Number ID exibido para esse número e cole aqui sem espaços extras."
+                };
+                _helpDialogTip = "Esse valor não é o número de telefone; é o identificador técnico do número dentro da Meta.";
+                break;
+
+            case HelpTopic.BusinessAccountId:
+                _helpDialogTitle = "Como obter o Business Account ID";
+                _helpDialogDescription = "O Business Account ID representa a conta do WhatsApp Business (WABA) da sua empresa dentro da Meta.";
+                _helpDialogSteps = new List<string>
+                {
+                    "Primeiro tente o botão Conectar com Facebook: o Pharmazap pode preencher esse campo automaticamente.",
+                    "Se precisar informar manualmente, acesse o Meta Business Manager com a conta da farmácia.",
+                    "Entre em Contas > Contas do WhatsApp e abra a conta desejada.",
+                    "Copie o identificador da conta do WhatsApp Business (WABA ID) e cole aqui."
+                };
+                _helpDialogTip = "Use o Business Account ID da mesma conta onde o Phone Number ID foi gerado.";
+                break;
+
+            case HelpTopic.InstagramBusinessId:
+                _helpDialogTitle = "Instagram Business ID";
+                _helpDialogDescription = "Na integração oficial via Meta, informe o identificador da conta profissional do Instagram conectada à Página do Facebook.";
+                _helpDialogSteps = new List<string>
+                {
+                    "Primeiro tente o botão Conectar com Facebook: o Pharmazap busca esse dado automaticamente na maioria dos casos.",
+                    "Se precisar informar manualmente, acesse o Meta Business Suite com a conta da farmácia.",
+                    "Abra a configuração da conta profissional do Instagram vinculada à Página.",
+                    "Copie o identificador da conta e informe aqui."
+                };
+                _helpDialogTip = "Use o mesmo Instagram Business ID vinculado ao token da Meta configurado para esta farmácia.";
+                break;
+
+            case HelpTopic.AccessToken:
+                _helpDialogTitle = "Como obter o Access Token";
+                _helpDialogDescription = "O Access Token autoriza a API do Pharmazap a chamar a API da Meta em nome da conta conectada.";
+                _helpDialogSteps = new List<string>
+                {
+                    "Primeiro tente o botão Conectar com Facebook: o token costuma ser retornado automaticamente para o Pharmazap.",
+                    "Se ainda precisar informar manualmente, acesse a conta da farmácia no Meta Business Manager ou no Meta for Developers.",
+                    "Gere ou copie um token com as permissões exigidas para o canal oficial.",
+                    "Cole o token completo neste campo e mantenha-o em sigilo."
+                };
+                _helpDialogTip = "Tokens temporários expiram; se a integração parar de funcionar, verifique validade e permissões do token.";
+                break;
+
+            case HelpTopic.ApiUrl:
+                _helpDialogTitle = "URL da API Não-Oficial (Evolution API)";
+                _helpDialogDescription = "Configure a URL base da sua Evolution Go. Use preferencialmente a raiz do servidor (ex.: http://host:8080), sem /webhook.";
+                _helpDialogSteps = new List<string>
+                {
+                    "Formato recomendado: http://host:8080",
+                    "Formato legado aceito: http://host:6000/api/whatsapp",
+                    "Exemplo correto neste ambiente: http://127.0.0.1:8080",
+                    "❌ ERRADO: http://host:8080/webhook (não use /webhook na URL base)",
+                    "O Pharmazap resolve automaticamente as rotas internas da Evolution Go"
+                };
+                _helpDialogTip = "⚠️ Dica importante: a URL base nunca deve conter '/webhook'. Se a conexão falhar, teste primeiro a raiz da Evolution Go, como http://host:8080.";
+                break;
+
+            case HelpTopic.ApiKey:
+                _helpDialogTitle = "API Key";
+                _helpDialogDescription = "A API Key pode ser mantida salva no servidor e reaproveitada sem ser enviada de volta ao navegador.";
+                _helpDialogSteps = new List<string>
+                {
+                    "Se a chave já estiver salva, deixe o campo em branco para reutilizá-la.",
+                    "Digite uma nova chave apenas quando quiser substituir a credencial atual.",
+                    "O backend resolve a chave persistida ao validar ou salvar o canal.",
+                    "Mantenha credenciais fora do navegador sempre que possível."
+                };
+                _helpDialogTip = "Quando a integração já está salva, o sistema reaproveita a chave sem expor o valor real ao cliente.";
+                break;
+
+            case HelpTopic.InstanceName:
+                _helpDialogTitle = "Nome da Instância";
+                _helpDialogDescription = "Identificador único da instância/conexão do WhatsApp na Evolution API.";
+                _helpDialogSteps = new List<string>
+                {
+                    "Use o número no formato DDI + DDD + telefone (ex.: 5562998808389).",
+                    "Esse identificador precisa ser único para cada número de WhatsApp cadastrado.",
+                    "Ao salvar, o sistema valida se a instância já existe e permite criar se ainda não existir."
+                };
+                _helpDialogTip = "Recomendação: use o próprio número do WhatsApp para facilitar suporte e evitar duplicidade.";
+                break;
+        }
+
+        _showHelpDialog = true;
+    }
+
+    private void CloseHelpDialog()
+    {
+        _showHelpDialog = false;
+    }
+
+    private void OnInstanceNameChanged(string? value)
+    {
+        var newValue = SanitizeInstanceIdentifier(value);
+        var changed = !string.Equals(newValue, Model.InstanceName, StringComparison.Ordinal);
+        Model.InstanceName = newValue;
+        if (changed)
+        {
+            // Changing the instance identifier invalidates any previously loaded QR Code
+            // and any previously validated connection status. Everything must be re-generated
+            // and re-validated for the new number.
+            _lastAutoValidatedInstanceName = null;
+            MarkInstanceOptionsStale();
+        }
+    }
+
+    private void MarkInstanceOptionsStale()
+    {
+        _instanceOptionsMessage = null;
+        _instanceStatusMessage = null;
+        _instanceExistsDialogError = null;
+        _showInstanceExistsDialog = false;
+        _qrCodeImageUrl = null;
+        _qrCodeImageDataUrl = null;
+        _qrCodeError = null;
+        _showQrCodeDialog = false;
+        _instanceConnected = false;
+        _pairingCode = null;
+        _pairingCodeError = null;
+    }
+
+    private void ResetInstanceOptions()
+    {
+        _instanceOptionsMessage = null;
+        _instanceStatusMessage = null;
+        _instanceCreateError = null;
+        _qrCodeError = null;
+        _qrCodeImageUrl = null;
+        _qrCodeImageDataUrl = null;
+        _showQrCodeDialog = false;
+        _showInstanceExistsDialog = false;
+        _instanceExistsDialogError = null;
+        _recreatingExistingInstance = false;
+        _instanceConnected = false;
+        _lastAutoValidatedInstanceName = null;
+        _pairingCode = null;
+        _pairingCodeError = null;
+        _pairingCodePhone = "";
+        _qrDialogUsePairingCode = false;
+    }
+
+    private void EnsureNonOfficialDefaults()
+    {
+        if (string.IsNullOrWhiteSpace(Model.ApiUrl))
+            Model.ApiUrl = _nonOfficialEvolutionApiUrl;
+
+        // Never persist/echo API key from this form in non-official flow.
+        Model.ApiKey = null;
+    }
+
+    private static string SanitizeInstanceIdentifier(string? value)
+    {
+        var digits = new string((value ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (string.IsNullOrWhiteSpace(digits))
+            return string.Empty;
+
+        return digits.Length > 50 ? digits[..50] : digits;
+    }
+
+    private static string GetInstanceDisplayValue(string? instanceName)
+    {
+        if (string.IsNullOrWhiteSpace(instanceName))
+            return string.Empty;
+
+        var trimmed = instanceName.Trim();
+        var digits = new string(trimmed.Where(char.IsDigit).ToArray());
+        return string.IsNullOrWhiteSpace(digits) ? trimmed : digits;
+    }
+
+    private static bool IsEvolutionStatusConnected(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return false;
+
+        var normalized = status.Trim().ToUpperInvariant();
+        return normalized == Consts.EvolutionGoInstance.StatusOpen ||
+               normalized == Consts.EvolutionGoInstance.StatusConnected;
+    }
+
+    private static string GetEvolutionStatusLabel(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return "não informado";
+
+        var normalized = status.Trim().ToUpperInvariant();
+        return normalized switch
+        {
+            Consts.EvolutionGoInstance.StatusOpen or Consts.EvolutionGoInstance.StatusConnected => "conectada",
+            Consts.EvolutionGoInstance.StatusClose or Consts.EvolutionGoInstance.StatusDisconnected => "desconectada",
+            Consts.EvolutionGoInstance.StatusQrCode => "aguardando QR Code",
+            "NOT_FOUND" => "não encontrada",
+            _ => normalized
+        };
+    }
+
+    private static string ToImageDataUrl(string? base64)
+    {
+        var payload = NormalizeQrCodePayload(base64);
+        if (string.IsNullOrWhiteSpace(payload))
+            return string.Empty;
+
+        if (TryExtractQrCodeValueFromJson(payload, out var extractedQrValue))
+            payload = NormalizeQrCodePayload(extractedQrValue);
+
+        if (string.IsNullOrWhiteSpace(payload))
+            return string.Empty;
+
+        // Already a valid data URL — just strip whitespace from the base64 body
+        if (payload.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        {
+            var commaIndex = payload.IndexOf(',');
+            if (commaIndex > 0 && commaIndex < payload.Length - 1 &&
+                payload.Contains(";base64", StringComparison.OrdinalIgnoreCase))
+            {
+                var prefix = payload[..(commaIndex + 1)];
+                var body = payload[(commaIndex + 1)..]
+                    .Replace(" ", "+")
+                    .Replace("\r", "")
+                    .Replace("\n", "")
+                    .Replace("\t", "");
+                return prefix + body;
+            }
+            return payload;
+        }
+
+        if (payload.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            payload.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return payload;
+        }
+
+        if (LooksLikeSvgMarkup(payload))
+            return BuildSvgDataUrl(payload);
+
+        var normalizedBase64 = NormalizeBase64Payload(payload);
+        return TryBuildQrImageDataUrl(normalizedBase64, out var dataUrl)
+            ? dataUrl
+            : $"data:image/png;base64,{normalizedBase64}";
+    }
+
+    private static string NormalizeQrCodePayload(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var normalized = value.Trim();
+        if (normalized.Length >= 2 &&
+            ((normalized.StartsWith('"') && normalized.EndsWith('"')) ||
+             (normalized.StartsWith('\'') && normalized.EndsWith('\''))))
+        {
+            normalized = normalized[1..^1].Trim();
+        }
+
+        return normalized.Replace("\\/", "/", StringComparison.Ordinal);
+    }
+
+    private static string NormalizeBase64Payload(string value)
+    {
+        var withPlusRestored = value.Replace(' ', '+');
+        var compact = new string(withPlusRestored.Where(ch => !char.IsWhiteSpace(ch)).ToArray())
+            .Replace('-', '+')
+            .Replace('_', '/');
+
+        var modulo = compact.Length % 4;
+        if (modulo != 0)
+            compact = compact.PadRight(compact.Length + (4 - modulo), '=');
+
+        return compact;
+    }
+
+    private static bool TryExtractQrCodeValueFromJson(string payload, out string? value)
+    {
+        value = null;
+        if (!(payload.StartsWith('{') || payload.StartsWith('[')))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(payload);
+            return TryExtractQrCodeValueFromJsonElement(doc.RootElement, out value);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryExtractQrCodeValueFromJsonElement(JsonElement element, out string? value)
+    {
+        value = null;
+
+        if (element.ValueKind == JsonValueKind.String)
+        {
+            var text = element.GetString();
+            if (LooksLikeQrImagePayload(text))
+            {
+                value = text;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                if (TryExtractQrCodeValueFromJsonElement(item, out value))
+                    return true;
+            }
+
+            return false;
+        }
+
+        if (element.ValueKind != JsonValueKind.Object)
+            return false;
+
+        foreach (var propertyName in new[] { "base64", "qrcode", "qrCode", "qr" })
+        {
+            if (!TryGetJsonPropertyIgnoreCase(element, propertyName, out var property))
+                continue;
+
+            if (TryExtractQrCodeValueFromJsonElement(property, out value))
+                return true;
+        }
+
+        foreach (var containerName in new[] { "data", "instance", "message", "result" })
+        {
+            if (!TryGetJsonPropertyIgnoreCase(element, containerName, out var nested))
+                continue;
+
+            if (TryExtractQrCodeValueFromJsonElement(nested, out value))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetJsonPropertyIgnoreCase(JsonElement element, string propertyName, out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (!property.Name.Equals(propertyName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            value = property.Value;
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static bool LooksLikeQrImagePayload(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        var normalized = NormalizeQrCodePayload(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        if (normalized.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (normalized.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (LooksLikeSvgMarkup(normalized))
+            return true;
+
+        return normalized.Length >= 32;
+    }
+
+    private static bool LooksLikeSvgMarkup(string value)
+    {
+        var trimmed = value.TrimStart('\uFEFF', '\u0000', ' ', '\t', '\r', '\n');
+        return trimmed.StartsWith("<svg", StringComparison.OrdinalIgnoreCase) ||
+               (trimmed.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase) &&
+                trimmed.Contains("<svg", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string BuildSvgDataUrl(string svgMarkup)
+    {
+        return $"data:image/svg+xml;utf8,{Uri.EscapeDataString(svgMarkup)}";
+    }
+
+    private static bool TryBuildQrImageDataUrl(string base64, out string dataUrl)
+    {
+        dataUrl = string.Empty;
+
+        if (!TryDecodeBase64Payload(base64, out var bytes))
+            return false;
+
+        var mimeType = DetectImageMimeType(bytes);
+        if (string.IsNullOrWhiteSpace(mimeType))
+            return false;
+
+        dataUrl = $"data:{mimeType};base64,{base64}";
+        return true;
+    }
+
+    private static bool TryDecodeBase64Payload(string base64, out byte[] bytes)
+    {
+        try
+        {
+            bytes = Convert.FromBase64String(base64);
+            return true;
+        }
+        catch
+        {
+            bytes = Array.Empty<byte>();
+            return false;
+        }
+    }
+
+    private static string? DetectImageMimeType(byte[] bytes)
+    {
+        if (bytes.Length >= 8 &&
+            bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 &&
+            bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A)
+        {
+            return "image/png";
+        }
+
+        if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+            return "image/jpeg";
+
+        if (bytes.Length >= 6)
+        {
+            var header = System.Text.Encoding.ASCII.GetString(bytes, 0, 6);
+            if (header is "GIF87a" or "GIF89a")
+                return "image/gif";
+        }
+
+        if (bytes.Length >= 12)
+        {
+            var riff = System.Text.Encoding.ASCII.GetString(bytes, 0, 4);
+            var webp = System.Text.Encoding.ASCII.GetString(bytes, 8, 4);
+            if (riff == "RIFF" && webp == "WEBP")
+                return "image/webp";
+        }
+
+        var text = System.Text.Encoding.UTF8.GetString(bytes).TrimStart('\uFEFF', '\u0000', ' ', '\t', '\r', '\n');
+        if (LooksLikeSvgMarkup(text))
+        {
+            return "image/svg+xml";
+        }
+
+        return null;
+    }
+}

@@ -1,0 +1,1855 @@
+{
+  "info": {
+    "_postman_id": "pharmazapplus-api-collection",
+    "name": "PharmazapPlus API",
+    "description": "Collection completa da API do PharmazapPlus - Sistema de Atendimento para Farmácias via WhatsApp\n\n## Sobre\n\nEsta collection contém todos os endpoints da API PharmazapPlus, incluindo:\n- **Autenticação JWT** (Login — script automático salva o token no environment)\n- Gerenciamento de usuários da farmácia\n- Gerenciamento de contas e farmácias (incluindo `dashboard-stats`)\n- CRM de clientes\n- Integração WhatsApp Business\n- Gerenciamento de atendimentos (pendentes, mensagens, assumir, enviar e transferir)\n- Gerenciamento de atendentes e etiquetas\n- Monitoramento de filas Redis (queue stats)\n- Health checks e monitoramento\n\n## Autenticação Swagger UI (`/api-docs`)\n\nA Swagger UI agora possui botão **\"Authorize\"** (🔒) que mostra o requisito JWT em cada endpoint protegido.\nEndpoints `[AllowAnonymous]` (ex: Login, Webhook) **não** exibem o cadeado.\n\n## Como usar\n\n1. Execute a requisição **Auth → Login** com suas credenciais\n2. O script de teste salva o token automaticamente na variável `{{token}}`\n3. Execute as demais requisições normalmente\n\n## Variáveis necessárias\n\n- `baseUrl`: URL base da API (ex: https://localhost:5001)\n- `token`: Token JWT — preenchido automaticamente pelo script do Login\n- `farmaciaId`: ID da farmácia para testes\n- `clienteId`: ID do cliente para testes\n- `atendimentoId`: ID do atendimento para testes\n- `usuarioId`: ID do usuário para testes\n- `etiquetaId`: ID da etiqueta para testes\n\n## Configuração WhatsApp\n\nA versão da API Meta é configurável via `WhatsApp:ApiVersion` em `appsettings.json` (padrão: `v18.0`).\nA URL base é `https://graph.facebook.com` — a versão é composta automaticamente pelo serviço.\n\nVersão: 1.6.0\nData: 2026-03-17",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.success && json.data && json.data.token) {",
+                  "    pm.environment.set('token', json.data.token);",
+                  "    console.log('✅ Token salvo automaticamente no environment');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"gestor@pharmazapplus.com\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/account/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "account",
+                "login"
+              ]
+            },
+            "description": "Autentica um usuário e retorna um token JWT válido por 8 horas. **Não requer autenticação.**\n\nO script de teste salva o token automaticamente na variável `{{token}}` do environment.\n\n**Credenciais de desenvolvimento:**\n- Gestor: `gestor@pharmazapplus.com` / `{{password}}`\n- Admin: `admin@pharmazapplus.com` / `{{password}}`\n- Atendente: `atendente@farmaciateste.com.br` / `{{password}}`\n\n**Resposta de sucesso:**\n```json\n{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"1\",\n    \"email\": \"gestor@pharmazapplus.com\",\n    \"name\": \"Gestor Sistema\",\n    \"role\": \"Gestor\",\n    \"farmaciaId\": \"1\",\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n    \"expiration\": \"2026-03-18T02:00:00Z\"\n  }\n}\n```"
+          },
+          "response": [
+            {
+              "name": "Login com sucesso (Gestor)",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"gestor@pharmazapplus.com\",\n  \"password\": \"{{password}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/account/login",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "account", "login"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"1\",\n    \"email\": \"gestor@pharmazapplus.com\",\n    \"name\": \"Gestor Sistema\",\n    \"role\": \"Gestor\",\n    \"farmaciaId\": \"1\",\n    \"farmaciaNome\": \"Sistema\",\n    \"token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.signature\",\n    \"expiration\": \"2026-03-18T10:00:00Z\",\n    \"theme\": \"Light\"\n  }\n}"
+            },
+            {
+              "name": "Credenciais inválidas",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {"key": "Content-Type", "value": "application/json"}
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"usuario@exemplo.com\",\n  \"password\": \"senhaerrada\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/account/login",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "account", "login"]
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "_postman_previewlanguage": "json",
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "cookie": [],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Credenciais inválidas\"\n}"
+            }
+          ]
+        }
+      ],
+      "description": "Autenticação JWT. O endpoint de login não requer token — após autenticar, o script salva o token automaticamente na variável `{{token}}`."
+    },
+    {
+      "name": "Usuarios",
+      "item": [
+        {
+          "name": "List Usuarios",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios?page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "usuarios"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Número da página"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "description": "Itens por página"
+                }
+              ]
+            },
+            "description": "Lista todos os usuários da farmácia com paginação. Gestor vê todos os usuários; Administrador vê apenas os da própria farmácia. Requer role Gestor ou Administrador."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Usuario by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/{{usuarioId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "usuarios",
+                "{{usuarioId}}"
+              ]
+            },
+            "description": "Retorna detalhes de um usuário específico, incluindo nome, email, role, turno, notificações e estatísticas de atendimento. Requer role Gestor ou Administrador."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Usuario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Maria Santos\",\n  \"email\": \"maria@farmaciaexemplo.com.br\",\n  \"password\": \"{{password}}\",\n  \"telefone\": \"11988888888\",\n  \"role\": \"Atendente\",\n  \"farmaciaId\": 1,\n  \"turno\": \"Matutino\",\n  \"recebeNotificacoes\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "usuarios"
+              ]
+            },
+            "description": "Cria um novo usuário na farmácia. Campos obrigatórios: nome, email, password (mín. 6 caracteres) e role. Roles aceitas: Gestor, Administrador, Atendente. O Administrador só pode criar usuários na própria farmácia. Requer role Gestor ou Administrador."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Usuario",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Maria Santos Silva\",\n  \"telefone\": \"11977777777\",\n  \"turno\": \"Integral\",\n  \"recebeNotificacoes\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/{{usuarioId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "usuarios",
+                "{{usuarioId}}"
+              ]
+            },
+            "description": "Atualiza os dados de um usuário existente. Apenas campos enviados são atualizados. Campos atualizáveis: nome, email, telefone, role, turno, recebeNotificacoes. Requer role Gestor ou Administrador."
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate Usuario",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/{{usuarioId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "usuarios",
+                "{{usuarioId}}"
+              ]
+            },
+            "description": "Desativa um usuário (soft delete). Não é possível desativar o próprio usuário. Requer role Gestor ou Administrador."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPassword\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/usuarios/{{usuarioId}}/reset-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "usuarios",
+                "{{usuarioId}}",
+                "reset-password"
+              ]
+            },
+            "description": "Redefine a senha de um usuário. A nova senha deve ter no mínimo 6 caracteres. Requer role Gestor ou Administrador."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints para gerenciamento de usuários da farmácia. Requer role Gestor ou Administrador. O Gestor pode gerenciar usuários de todas as farmácias; o Administrador gerencia apenas os usuários da sua farmácia."
+    },
+    {
+      "name": "Account",
+      "item": [
+        {
+          "name": "Get User Info",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/account/userinfo",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "account",
+                "userinfo"
+              ]
+            },
+            "description": "Retorna informações do usuário autenticado incluindo ID, email, nome, role, e informações da farmácia."
+          },
+          "response": []
+        },
+        {
+          "name": "Register Farmacia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Farmácia Exemplo\",\n  \"cnpj\": \"12.345.678/0001-99\",\n  \"telefone\": \"11999999999\",\n  \"email\": \"contato@farmaciaexemplo.com.br\",\n  \"endereco\": \"Av. Paulista, 1000 - São Paulo/SP\",\n  \"nomeContato\": \"João Silva\",\n  \"emailContato\": \"joao@farmaciaexemplo.com.br\",\n  \"telefoneContato\": \"11988888888\",\n  \"plano\": \"Premium\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/account/register-farmacia",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "account",
+                "register-farmacia"
+              ]
+            },
+            "description": "Registra uma nova farmácia no sistema. Requer role de Gestor. Cria automaticamente um usuário administrador para a farmácia."
+          },
+          "response": []
+        },
+        {
+          "name": "List Farmacias",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/account/farmacias?page=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "account",
+                "farmacias"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Número da página"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "description": "Itens por página (máx 100)"
+                }
+              ]
+            },
+            "description": "Lista todas as farmácias cadastradas no sistema. Requer role de Gestor. Retorna informações resumidas e paginadas."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Farmacia Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/account/farmacia/{{farmaciaId}}/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "account",
+                "farmacia",
+                "{{farmaciaId}}",
+                "dashboard"
+              ]
+            },
+            "description": "Retorna estatísticas e dashboard de uma farmácia específica. Inclui totais de atendentes, clientes, atendimentos, etc."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/account/dashboard-stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "account",
+                "dashboard-stats"
+              ]
+            },
+            "description": "Retorna estatísticas do dashboard de acordo com o papel (role) do usuário autenticado:\n- **Gestor:** totalFarmacias, totalUsuarios, atendimentosHoje, atendimentosEmAndamento\n- **Administrador:** totalClientes, atendimentosHoje, atendimentosPendentes, atendimentosEmAndamento\n- **Atendente:** atendimentosPendentes, atendimentosEmAndamento, atendimentosFinalizadosHoje\n\nEndpoint protegido — requer token JWT."
+          },
+          "response": [
+            {
+              "name": "Dashboard Gestor",
+              "originalRequest": {
+                "method": "GET",
+                "header": [{"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}],
+                "url": {
+                  "raw": "{{baseUrl}}/api/account/dashboard-stats",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "account", "dashboard-stats"]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"totalFarmacias\": 3,\n    \"totalUsuarios\": 12,\n    \"atendimentosHoje\": 47,\n    \"atendimentosEmAndamento\": 5\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Update Theme",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"theme\": \"Dark\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/account/theme",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "account",
+                "theme"
+              ]
+            },
+            "description": "Atualiza o tema do usuário autenticado. Valores aceitos: `Dark` ou `Light`."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints para gerenciamento de contas, autenticação e informações de farmácias."
+    },
+    {
+      "name": "Clientes",
+      "item": [
+        {
+          "name": "List Clientes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/clientes?page=1&pageSize=20&orderBy=Nome&orderDesc=false",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "clientes"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "",
+                  "description": "Busca por nome, email, telefone ou CPF",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
+                  "value": "0",
+                  "description": "0=Ativo, 1=Inativo",
+                  "disabled": true
+                },
+                {
+                  "key": "tipo",
+                  "value": "0",
+                  "description": "0=Pessoa Física, 1=Pessoa Jurídica",
+                  "disabled": true
+                },
+                {
+                  "key": "segmento",
+                  "value": "",
+                  "description": "Filtro por segmento",
+                  "disabled": true
+                },
+                {
+                  "key": "usoContinuo",
+                  "value": "true",
+                  "description": "Filtro por uso contínuo",
+                  "disabled": true
+                },
+                {
+                  "key": "tag",
+                  "value": "",
+                  "description": "Filtro por tag",
+                  "disabled": true
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "Número da página"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20",
+                  "description": "Itens por página (máx 100)"
+                },
+                {
+                  "key": "orderBy",
+                  "value": "Nome",
+                  "description": "Campo de ordenação"
+                },
+                {
+                  "key": "orderDesc",
+                  "value": "false",
+                  "description": "Ordenação decrescente"
+                }
+              ]
+            },
+            "description": "Lista todos os clientes da farmácia do usuário autenticado com filtros avançados e paginação."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Cliente by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/clientes/{{clienteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "{{clienteId}}"
+              ]
+            },
+            "description": "Retorna detalhes completos de um cliente específico, incluindo tags e observações."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Maria\",\n  \"sobrenome\": \"Santos\",\n  \"email\": \"maria@email.com\",\n  \"telefone\": \"5511988888888\",\n  \"cpfCnpj\": \"98765432100\",\n  \"endereco\": \"Av. Paulista, 1000\",\n  \"cidade\": \"São Paulo\",\n  \"estado\": \"SP\",\n  \"cep\": \"01310100\",\n  \"tipo\": 0,\n  \"segmento\": \"Varejo\",\n  \"usoContínuo\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/clientes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "clientes"
+              ]
+            },
+            "description": "Cria um novo cliente vinculado à farmácia do usuário autenticado."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Cliente",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Maria\",\n  \"sobrenome\": \"Santos Silva\",\n  \"telefone\": \"5511977777777\",\n  \"endereco\": \"Av. Paulista, 1500\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/clientes/{{clienteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "{{clienteId}}"
+              ]
+            },
+            "description": "Atualiza os dados de um cliente existente. Apenas campos enviados são atualizados."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Cliente",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/clientes/{{clienteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "{{clienteId}}"
+              ]
+            },
+            "description": "Remove um cliente (soft delete). Requer role de Administrador ou Gestor."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Cliente Estatisticas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/clientes/{{clienteId}}/estatisticas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "{{clienteId}}",
+                "estatisticas"
+              ]
+            },
+            "description": "Retorna estatísticas de um cliente: total de atendimentos, último atendimento, ticket médio, etc."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Cliente Atendimentos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/clientes/{{clienteId}}/atendimentos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "{{clienteId}}",
+                "atendimentos"
+              ]
+            },
+            "description": "Lista todos os atendimentos realizados para um cliente específico."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Tag to Cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tag\": \"VIP\",\n  \"cor\": \"#FF5733\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/clientes/{{clienteId}}/tags",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "{{clienteId}}",
+                "tags"
+              ]
+            },
+            "description": "Adiciona uma tag/etiqueta a um cliente para melhor organização e segmentação."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Observacao to Cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"texto\": \"Cliente prefere contato via WhatsApp\",\n  \"tipo\": \"Importante\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/clientes/{{clienteId}}/observacoes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "clientes",
+                "{{clienteId}}",
+                "observacoes"
+              ]
+            },
+            "description": "Adiciona uma observação/nota a um cliente para registro de informações importantes."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints para gerenciamento completo de clientes (CRM)."
+    },
+    {
+      "name": "WhatsApp",
+      "item": [
+        {
+          "name": "Webhook Verification",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/whatsapp/webhook?hub_mode=subscribe&hub_verify_token=seu-token&hub_challenge=1234567890",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "whatsapp",
+                "webhook"
+              ],
+              "query": [
+                {
+                  "key": "hub_mode",
+                  "value": "subscribe",
+                  "description": "Deve ser 'subscribe'"
+                },
+                {
+                  "key": "hub_verify_token",
+                  "value": "seu-token",
+                  "description": "Token de verificação configurado"
+                },
+                {
+                  "key": "hub_challenge",
+                  "value": "1234567890",
+                  "description": "Challenge string da Meta"
+                }
+              ]
+            },
+            "description": "Endpoint de verificação do webhook usado pela Meta/Facebook para validar a configuração."
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook Receiver",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"123456789\",\n      \"changes\": [\n        {\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"phone_number_id\": \"987654321\"\n            },\n            \"messages\": [\n              {\n                \"from\": \"55562998808389\",\n                \"id\": \"wamid.HBgNNTUxMTk5OTk5OTk5ORUCABIYIDNBN0\",\n                \"timestamp\": \"1706975400\",\n                \"text\": {\n                  \"body\": \"Olá, preciso de ajuda\"\n                },\n                \"type\": \"text\"\n              }\n            ]\n          },\n          \"field\": \"messages\"\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/whatsapp/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "whatsapp",
+                "webhook"
+              ]
+            },
+            "description": "Endpoint que recebe notificações de mensagens do WhatsApp Business API."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Text Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"55562998808389\",\n  \"text\": \"Olá! Sua receita está pronta para retirada.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/whatsapp/send/text",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "whatsapp",
+                "send",
+                "text"
+              ]
+            },
+            "description": "Envia uma mensagem de texto via WhatsApp para um número específico."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Media Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "to",
+                  "value": "55562998808389",
+                  "type": "text"
+                },
+                {
+                  "key": "mediaType",
+                  "value": "image",
+                  "type": "text",
+                  "description": "Tipo: image, video, document"
+                },
+                {
+                  "key": "caption",
+                  "value": "Sua receita médica",
+                  "type": "text"
+                },
+                {
+                  "key": "mediaFile",
+                  "type": "file",
+                  "src": [],
+                  "description": "Arquivo de mídia"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/whatsapp/send/media",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "whatsapp",
+                "send",
+                "media"
+              ]
+            },
+            "description": "Envia uma mensagem com mídia (imagem, vídeo ou documento) via WhatsApp."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Template Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"55562998808389\",\n  \"templateName\": \"receita_pronta\",\n  \"languageCode\": \"pt_BR\",\n  \"parameters\": {\n    \"cliente_nome\": \"João\",\n    \"numero_receita\": \"12345\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/whatsapp/send/template",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "whatsapp",
+                "send",
+                "template"
+              ]
+            },
+            "description": "Envia uma mensagem usando um template pré-aprovado pela Meta. Requer role de Administrador.\n\n**Campo `parameters` é opcional** — pode ser omitido para templates sem variáveis.\n\nExemplo sem parâmetros:\n```json\n{\n  \"to\": \"55562998808389\",\n  \"templateName\": \"boas_vindas\",\n  \"languageCode\": \"pt_BR\"\n}\n```\n\nA versão da API Meta é configurável via `WhatsApp:ApiVersion` no `appsettings.json` (padrão: `v18.0`)."
+          },
+          "response": []
+        },
+        {
+          "name": "Setup Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"webhookUrl\": \"https://api.pharmazapplus.com/api/whatsapp/webhook\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/whatsapp/setup-webhook/{{farmaciaId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "whatsapp",
+                "setup-webhook",
+                "{{farmaciaId}}"
+              ]
+            },
+            "description": "Configura o webhook do WhatsApp para uma farmácia específica. Requer role de Administrador."
+          },
+          "response": []
+        },
+        {
+          "name": "Simular Mensagem de Cliente (Mock)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": \"5562998808389\",\n  \"farmaciaId\": {{farmaciaId}},\n  \"text\": \"Olá, preciso renovar minha receita de metformina\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/whatsapp/mock/mensagem",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "whatsapp",
+                "mock",
+                "mensagem"
+              ]
+            },
+            "description": "[APENAS DEV/MOCK] Simula o envio de uma mensagem por um cliente externo via WhatsApp. Cria um Atendimento com status 'Pendente' e uma Mensagem Inbound no banco de dados. Não requer autenticação. Disponível apenas quando WhatsApp:DevelopmentMode = true."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints para integração com WhatsApp Business API."
+    },
+    {
+      "name": "Atendimentos",
+      "description": "Endpoints para gerenciamento de atendimentos. Permite listar atendimentos pendentes, ler mensagens, assumir, enviar mensagens e transferir atendimentos.",
+      "item": [
+        {
+          "name": "List Atendimentos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/atendimentos?status=Pendente",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "atendimentos"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "Pendente",
+                  "description": "Filtrar por status: Pendente, EmAndamento, Finalizado. Omitir para retornar todos."
+                }
+              ]
+            },
+            "description": "Lista atendimentos da farmácia autenticada. Use ?status=Pendente para ver apenas os que aguardam um atendente."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Mensagens do Atendimento",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/atendimentos/{{atendimentoId}}/mensagens",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "atendimentos",
+                "{{atendimentoId}}",
+                "mensagens"
+              ]
+            },
+            "description": "Retorna todas as mensagens de um atendimento específico, ordenadas cronologicamente."
+          },
+          "response": []
+        },
+        {
+          "name": "Assumir Atendimento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/atendimentos/{{atendimentoId}}/assumir",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "atendimentos",
+                "{{atendimentoId}}",
+                "assumir"
+              ]
+            },
+            "description": "Atendente assume o atendimento: muda o status de 'Pendente' para 'EmAndamento' e registra qual atendente assumiu. Requer role Atendente ou Administrador."
+          },
+          "response": []
+        },
+        {
+          "name": "Enviar Mensagem",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Olá! Sua receita está pronta para retirada.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/atendimentos/{{atendimentoId}}/mensagens",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "atendimentos",
+                "{{atendimentoId}}",
+                "mensagens"
+              ]
+            },
+            "description": "Envia uma mensagem de texto no contexto de um atendimento em andamento. A mensagem é persistida no banco e enviada via WhatsApp."
+          },
+          "response": []
+        },
+        {
+          "name": "Transferir Atendimento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"targetAtendenteId\": {{usuarioId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/atendimentos/{{atendimentoId}}/transferir",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "atendimentos",
+                "{{atendimentoId}}",
+                "transferir"
+              ]
+            },
+            "description": "Transfere o atendimento para outro atendente da mesma farmácia. Requer role Gestor ou Administrador."
+          },
+          "response": []
+        },
+        {
+          "name": "Finalizar Atendimento",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"motivo\": \"Atendimento concluído com sucesso\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/atendimentos/{{atendimentoId}}/finalizar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "atendimentos",
+                "{{atendimentoId}}",
+                "finalizar"
+              ]
+            },
+            "description": "Finaliza um atendimento em andamento e opcionalmente salva o motivo no comentário de avaliação."
+          },
+          "response": []
+        },
+        {
+          "name": "Atualizar Etiqueta do Atendimento",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"etiquetaId\": {{etiquetaId}}\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/atendimentos/{{atendimentoId}}/etiqueta",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "atendimentos",
+                "{{atendimentoId}}",
+                "etiqueta"
+              ]
+            },
+            "description": "Define ou remove a etiqueta de um atendimento. Para remover, envie `{ \"etiquetaId\": null }`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "item": [
+        {
+          "name": "Get Queue Stats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/messages/queue-stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "messages",
+                "queue-stats"
+              ]
+            },
+            "description": "Retorna as contagens atuais das filas Redis para monitoramento: novas mensagens, notificações e agendamentos pendentes. Requer autenticação JWT."
+          },
+          "response": [
+            {
+              "name": "Sucesso",
+              "originalRequest": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/api/messages/queue-stats",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "api",
+                    "messages",
+                    "queue-stats"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"novasMensagens\": 3,\n    \"notificacoes\": 1,\n    \"agendamentos\": 0,\n    \"timestamp\": \"2024-02-05T12:00:00Z\"\n  }\n}"
+            }
+          ]
+        }
+      ],
+      "description": "Endpoints para gerenciamento e monitoramento de mensagens e filas Redis."
+    },
+    {
+      "name": "Atendentes",
+      "item": [
+        {
+          "name": "List Atendentes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/atendentes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "atendentes"]
+            },
+            "description": "Lista todos os atendentes da farmácia autenticada. Requer role Administrador ou Gestor."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Atendente by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/atendentes/{{usuarioId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "atendentes", "{{usuarioId}}"]
+            },
+            "description": "Retorna detalhes de um atendente específico. Requer role Administrador ou Gestor."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Atendente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Ana Lima\",\n  \"email\": \"ana@farmaciaexemplo.com.br\",\n  \"password\": \"{{password}}\",\n  \"turno\": \"Matutino\",\n  \"recebeNotificacoes\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/atendentes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "atendentes"]
+            },
+            "description": "Cria um novo atendente vinculado à farmácia do administrador autenticado. Requer role Administrador ou Gestor."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Atendente",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Ana Lima Silva\",\n  \"turno\": \"Integral\",\n  \"recebeNotificacoes\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/atendentes/{{usuarioId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "atendentes", "{{usuarioId}}"]
+            },
+            "description": "Atualiza dados de um atendente. Requer role Administrador ou Gestor."
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate Atendente",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/atendentes/{{usuarioId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "atendentes", "{{usuarioId}}"]
+            },
+            "description": "Desativa (soft delete) um atendente. Requer role Administrador ou Gestor."
+          },
+          "response": []
+        },
+        {
+          "name": "Reativar Atendente",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/atendentes/{{usuarioId}}/ativar",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "atendentes", "{{usuarioId}}", "ativar"]
+            },
+            "description": "Reativa um atendente previamente desativado. Requer role Administrador ou Gestor."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Senha Atendente",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newPassword\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/atendentes/{{usuarioId}}/reset-senha",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "atendentes", "{{usuarioId}}", "reset-senha"]
+            },
+            "description": "Redefine a senha de um atendente. Requer role Administrador ou Gestor."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints para gerenciamento de atendentes da farmácia. Requer role Administrador ou Gestor."
+    },
+    {
+      "name": "Etiquetas",
+      "item": [
+        {
+          "name": "List Etiquetas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/etiquetas?ativo=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "etiquetas"],
+              "query": [
+                {"key": "ativo", "value": "true", "description": "true = apenas ativas, false = apenas inativas, omitir = todas"}
+              ]
+            },
+            "description": "Lista etiquetas da farmácia. Use `?ativo=true` para apenas as ativas. Requer autenticação."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Etiqueta by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/etiquetas/{{etiquetaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "etiquetas", "{{etiquetaId}}"]
+            },
+            "description": "Retorna detalhes de uma etiqueta específica."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Etiqueta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"VIP\",\n  \"cor\": \"Ouro\",\n  \"descricao\": \"Clientes premium\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/etiquetas",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "etiquetas"]
+            },
+            "description": "Cria uma nova etiqueta para categorizar atendimentos. Requer role Administrador ou Gestor."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Etiqueta",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"VIP Premium\",\n  \"cor\": \"Ouro\",\n  \"descricao\": \"Clientes de alto valor\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/etiquetas/{{etiquetaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "etiquetas", "{{etiquetaId}}"]
+            },
+            "description": "Atualiza uma etiqueta existente. Requer role Administrador ou Gestor."
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate Etiqueta",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/etiquetas/{{etiquetaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "etiquetas", "{{etiquetaId}}"]
+            },
+            "description": "Desativa (soft delete) uma etiqueta. Requer role Administrador ou Gestor."
+          },
+          "response": []
+        },
+        {
+          "name": "Reativar Etiqueta",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/etiquetas/{{etiquetaId}}/ativar",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "etiquetas", "{{etiquetaId}}", "ativar"]
+            },
+            "description": "Reativa uma etiqueta previamente desativada. Requer role Administrador ou Gestor."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints para gerenciamento de etiquetas de atendimento. Requer autenticação."
+    },
+    {
+      "name": "Relatorios",
+      "item": [
+        {
+          "name": "Get Relatorio Gestor",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/relatorios/gestor?dataInicio=2026-03-01&dataFim=2026-03-18&farmaciaId={{farmaciaId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "relatorios", "gestor"],
+              "query": [
+                {"key": "dataInicio", "value": "2026-03-01"},
+                {"key": "dataFim", "value": "2026-03-18"},
+                {"key": "farmaciaId", "value": "{{farmaciaId}}"}
+              ]
+            },
+            "description": "Relatório consolidado para gestor. Pode filtrar por período e farmácia."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Relatorio Administrador",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/relatorios/administrador?dataInicio=2026-03-01&dataFim=2026-03-18",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "relatorios", "administrador"],
+              "query": [
+                {"key": "dataInicio", "value": "2026-03-01"},
+                {"key": "dataFim", "value": "2026-03-18"}
+              ]
+            },
+            "description": "Relatório detalhado da farmácia (admin/gestor)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Relatorio Atendente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/relatorios/atendente?dataInicio=2026-03-01&dataFim=2026-03-18",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "relatorios", "atendente"],
+              "query": [
+                {"key": "dataInicio", "value": "2026-03-01"},
+                {"key": "dataFim", "value": "2026-03-18"}
+              ]
+            },
+            "description": "Relatório individual do atendente autenticado."
+          },
+          "response": []
+        },
+        {
+          "name": "Exportar Relatorio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{token}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/relatorios/exportar?tipo=atendente&dataInicio=2026-03-01&dataFim=2026-03-18",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "relatorios", "exportar"],
+              "query": [
+                {"key": "tipo", "value": "atendente", "description": "gestor | administrador | atendente"},
+                {"key": "dataInicio", "value": "2026-03-01"},
+                {"key": "dataFim", "value": "2026-03-18"}
+              ]
+            },
+            "description": "Exporta relatório em XLSX."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints de relatórios analíticos e exportação."
+    },
+    {
+      "name": "Health & System",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Verifica o status de saúde da aplicação e seus componentes (banco de dados, etc)."
+          },
+          "response": []
+        },
+        {
+          "name": "System Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/system/info",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "system",
+                "info"
+              ]
+            },
+            "description": "Retorna informações sobre o sistema: versão, ambiente, runtime, uptime, etc."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints para monitoramento e informações do sistema."
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://localhost:5001",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "farmaciaId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "clienteId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "usuarioId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "atendimentoId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "etiquetaId",
+      "value": "1",
+      "type": "string"
+    }
+  ]
+}

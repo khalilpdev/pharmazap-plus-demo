@@ -1,0 +1,408 @@
+@page "/dashboard"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize]
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<Dashboard> Logger
+@inject IPharmazapApiService PharmazapApiService
+
+<PageTitle>Dashboard - Pharmazap Plus</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 1.5rem;">
+    <AuthorizeView>
+        <Authorized>
+            @if (CurrentUser != null)
+            {
+                <!-- Header -->
+                <FluentCard Style="padding: 1.5rem;">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="12" Style="flex: 1;">
+                    <FluentIcon Icon="@(Icons.Regular.Size32.Home)" Color="Color.Accent" />
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                        <FluentLabel Typo="Typography.PageTitle">Bem-vindo, @CurrentUser.Name</FluentLabel>
+                        <FluentBadge Appearance="Appearance.Accent">@CurrentUser.RoleDisplayName</FluentBadge>
+                        @if (CurrentUser.HasFarmacia)
+                        {
+                            <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-rest);">@CurrentUser.FarmaciaNome</FluentLabel>
+                        }
+                    </FluentStack>
+                </FluentStack>
+                <FluentButton Appearance="Appearance.Accent" @onclick="NavigateToMessages">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Chat)" Slot="start" Color="Color.Fill" />
+                    Mensagens
+                </FluentButton>
+            </FluentStack>
+        </FluentCard>
+
+        <!-- Stats Cards Grid -->
+        <FluentGrid Spacing="3" Justify="JustifyContent.FlexStart">
+            @foreach (var card in GetStatsCards())
+            {
+                <FluentGridItem xs="12" sm="6" md="3">
+                    <FluentCard Style="padding: 1.5rem; height: 100%;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                                <FluentIcon Value="@(card.Icon)" Color="Color.Accent" />
+                                <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold" Style="min-width: 0; overflow: hidden; text-overflow: ellipsis;">@card.Title</FluentLabel>
+                            </FluentStack>
+                            <FluentLabel Typo="Typography.HeroTitle" Color="Color.Accent" Style="font-size: 2.5rem;">@card.Value</FluentLabel>
+                            <FluentLabel Typo="Typography.Body">@card.Description</FluentLabel>
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="8" Style="margin-top: auto;">
+                                <FluentButton Appearance="@(card.ButtonAppearance)"
+                                              Style="width: 100%;"
+                                              @onclick="@(() => card.OnClick())">
+                                    @card.ButtonText
+                                </FluentButton>
+                                @if (card.SecondaryButtonText != null)
+                                {
+                                    <FluentButton Appearance="@(card.SecondaryButtonAppearance ?? Appearance.Accent)"
+                                                  Style="width: 100%;"
+                                                  @onclick="@(() => card.SecondaryOnClick?.Invoke())">
+                                        @card.SecondaryButtonText
+                                    </FluentButton>
+                                }
+                            </FluentStack>
+                        </FluentStack>
+                    </FluentCard>
+                </FluentGridItem>
+            }
+        </FluentGrid>
+
+        <!-- Pending Atendimentos List (Atendente only) -->
+        @if (CurrentUser?.Role == UserRoles.Atendente && _pendingItems.Any())
+        {
+            <FluentCard Style="padding: 1.5rem;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.AlertBadge)" Color="Color.Accent" />
+                        <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold" Style="flex: 1;">Atendimentos Aguardando</FluentLabel>
+                        <FluentButton Appearance="Appearance.Lightweight" @onclick="@(() => Navigation.NavigateTo("/messages"))">
+                            Ver todos →
+                        </FluentButton>
+                    </FluentStack>
+                    @foreach (var item in _pendingItems.Take(5))
+                    {
+                        <FluentCard Style="padding: 0.75rem;">
+                            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="12">
+                                <FluentStack Orientation="Orientation.Vertical" VerticalGap="4" Style="flex: 1; min-width: 0;">
+                                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+                                        <FluentLabel Weight="FontWeight.Bold" Style="flex: 1;">@item.ClienteNome</FluentLabel>
+                                        <FluentLabel Color="Color.Lightweight" Style="font-size: 0.75rem; flex-shrink: 0;">@GetTimeAgo(item.DataInicio)</FluentLabel>
+                                    </FluentStack>
+                                    <FluentLabel Color="Color.Lightweight"
+                                                 Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem;">
+                                        @item.UltimaMensagem
+                                    </FluentLabel>
+                                </FluentStack>
+                                <FluentButton Appearance="Appearance.Accent"
+                                              @onclick="@(() => Navigation.NavigateTo("/messages"))">
+                                    Assumir
+                                </FluentButton>
+                            </FluentStack>
+                        </FluentCard>
+                    }
+                </FluentStack>
+            </FluentCard>
+        }
+
+        <!-- Quick Actions -->
+        <FluentCard Style="padding: 1.5rem;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Ações Rápidas</FluentLabel>
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Wrap="true">
+                    @foreach (var action in GetQuickActions())
+                    {
+                        <FluentButton Appearance="@(action.ButtonAppearance)" @onclick="@(() => action.OnClick())">
+                            <FluentIcon Value="@(action.Icon)" Slot="start" />
+                            @action.Label
+                        </FluentButton>
+                    }
+                </FluentStack>
+            </FluentStack>
+        </FluentCard>
+
+        <!-- Recent Activity -->
+        <FluentCard Style="padding: 1.5rem;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                    <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold" Style="flex: 1;">Atividade Recente</FluentLabel>
+                    @if (_isLoadingActivities)
+                    {
+                        <FluentProgressRing Style="width: 16px; height: 16px;" />
+                    }
+                    else
+                    {
+                        <FluentButton Appearance="Appearance.Stealth" @onclick="LoadRecentActivities" Title="Atualizar" aria-label="Atualizar atividades">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.ArrowClockwise)" />
+                        </FluentButton>
+                    }
+                </FluentStack>
+                @if (_recentActivities.Any())
+                {
+                    @foreach (var activity in _recentActivities)
+                    {
+                        <FluentCard Style="padding: 0.75rem;">
+                            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="12">
+                                <FluentIcon Value="@(activity.Icon)" Color="@(activity.IconColor)" />
+                                <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="flex: 1;">
+                                    <FluentLabel Typo="Typography.Body" Weight="FontWeight.Bold">@activity.Title</FluentLabel>
+                                    <FluentLabel Typo="Typography.Body" Style="color: var(--neutral-foreground-hint);">@activity.Time</FluentLabel>
+                                </FluentStack>
+                            </FluentStack>
+                        </FluentCard>
+                    }
+                }
+                else
+                {
+                    <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                                 VerticalGap="8" Style="padding: 1rem; text-align: center;">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.ClockArrowDownload)" Style="color: var(--neutral-foreground-hint);" />
+                        <FluentLabel Style="color: var(--neutral-foreground-hint);">Nenhuma atividade recente</FluentLabel>
+                    </FluentStack>
+                }
+            </FluentStack>
+        </FluentCard>
+            }
+            else
+            {
+                <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center"
+                             VerticalAlignment="VerticalAlignment.Center" Style="min-height: 60vh;">
+                    <FluentProgressRing />
+                    <FluentLabel>Carregando dashboard...</FluentLabel>
+                </FluentStack>
+            }
+        </Authorized>
+        <NotAuthorized>
+            <FluentCard Style="padding: 1.5rem; text-align: center;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" HorizontalAlignment="HorizontalAlignment.Center">
+                    <FluentIcon Icon="@(Icons.Regular.Size24.PersonKey)" Color="Color.Accent" />
+                    <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Você precisa entrar para acessar o dashboard</FluentLabel>
+                    <FluentLabel Color="Color.Lightweight">Faça login para continuar.</FluentLabel>
+                    <FluentButton Appearance="Appearance.Accent" @onclick="() => NavigateToLogin()">Ir para Login</FluentButton>
+                </FluentStack>
+            </FluentCard>
+        </NotAuthorized>
+    </AuthorizeView>
+</FluentStack>
+
+@code {
+    private UserInfo? CurrentUser { get; set; }
+    private bool _userInfoLoaded;
+    private bool _isLoadingStats;
+    private DashboardStats? _stats;
+
+    private readonly List<ActivityItem> _recentActivities = [];
+    private bool _isLoadingActivities;
+
+    protected override void OnInitialized()
+    {
+        CurrentUser = AuthService.CurrentUser;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_userInfoLoaded)
+        {
+            _userInfoLoaded = true;
+            try
+            {
+                CurrentUser ??= await AuthService.GetUserInfo();
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error loading dashboard user info");
+            }
+
+            await LoadDashboardStats();
+            await LoadRecentActivities();
+        }
+    }
+
+    private async Task LoadDashboardStats()
+    {
+        if (_isLoadingStats) return;
+        _isLoadingStats = true;
+        StateHasChanged();
+
+        try
+        {
+            _stats = await PharmazapApiService.GetDashboardStatsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading dashboard stats");
+        }
+        finally
+        {
+            _isLoadingStats = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetStat(int? value) => _isLoadingStats ? "..." : (value?.ToString() ?? "—");
+
+    private async Task LoadRecentActivities()
+    {
+        if (_isLoadingActivities) return;
+        _isLoadingActivities = true;
+        try
+        {
+            var items = await PharmazapApiService.GetRecentActivitiesAsync(20);
+            _recentActivities.Clear();
+            foreach (var item in items)
+                _recentActivities.Add(MapToActivityItem(item));
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading recent activities");
+        }
+        finally
+        {
+            _isLoadingActivities = false;
+            StateHasChanged();
+        }
+    }
+
+    private static ActivityItem MapToActivityItem(RecentActivityItem item)
+    {
+        Icon icon;
+        Color color;
+        switch (item.TipoAtividade)
+        {
+            case "AtendimentoAssumido":
+                icon = new Icons.Regular.Size20.PersonAdd();
+                color = Color.Accent;
+                break;
+            case "MensagemEnviada":
+                icon = new Icons.Regular.Size20.Chat();
+                color = Color.Success;
+                break;
+            case "AtendimentoFinalizado":
+                icon = new Icons.Regular.Size20.CheckmarkCircle();
+                color = Color.Success;
+                break;
+            case "AtendimentoTransferido":
+                icon = new Icons.Regular.Size20.ArrowSwap();
+                color = Color.Warning;
+                break;
+            default:
+                icon = new Icons.Regular.Size20.History();
+                color = Color.Neutral;
+                break;
+        }
+
+        return new ActivityItem(icon, color, FormatDescricao(item.Descricao), GetTimeAgoStatic(item.DataHora));
+    }
+
+    private static string FormatDescricao(string descricao) =>
+        System.Text.RegularExpressions.Regex.Replace(descricao, @"\b\d{11,13}\b", m => m.Value.FormatTelefone());
+
+    private static string GetTimeAgoStatic(DateTime dateTime)
+    {
+        // dateTime is stored as UTC in the database
+        var utcNow = DateTime.UtcNow;
+        var timeSpan = utcNow - dateTime.ToUniversalTime();
+        if (timeSpan.TotalMinutes < 1) return "Agora";
+        if (timeSpan.TotalMinutes < 60) return $"{(int)timeSpan.TotalMinutes}min atrás";
+        if (timeSpan.TotalHours < 24) return $"{(int)timeSpan.TotalHours}h atrás";
+        if (timeSpan.TotalDays < 7) return $"{(int)timeSpan.TotalDays}d atrás";
+        return dateTime.ToLocalTime().ToString(Consts.Formato.DataHora);
+    }
+
+    private List<StatsCard> GetStatsCards() => CurrentUser?.Role switch
+    {
+        UserRoles.Gestor =>
+        [
+            new(new Icons.Regular.Size24.Building(), "Farmácias", GetStat(_stats?.TotalFarmacias), "Farmácias ativas no sistema", "Ver todas", Appearance.Lightweight, NavigateToFarmacias),
+            new(new Icons.Regular.Size24.People(), "Administradores", GetStat(_stats?.TotalAdministradores), "Administradores cadastrados", "Gerenciar", Appearance.Lightweight, NavigateToAdministradores),
+            new(new Icons.Regular.Size24.Chat(), "Atendimentos", GetStat(_stats?.AtendimentosHoje), "Atendimentos hoje", "Ver relatório", Appearance.Lightweight, NavigateToRelatorios),
+            new(new Icons.Regular.Size24.ChartMultiple(), "Em Andamento", GetStat(_stats?.AtendimentosEmAndamento), "Atendimentos em andamento", "Ver métricas", Appearance.Lightweight, NavigateToRelatorios),
+        ],
+        UserRoles.Administrador =>
+        [
+            new(new Icons.Regular.Size24.People(), "Atendentes", GetStat(_stats?.TotalAtendentes), "Atendentes ativos", "Gerenciar", Appearance.Lightweight, NavigateToAtendentes),
+            new(new Icons.Regular.Size24.Chat(), "Conversas", GetStat(_stats?.AtendimentosEmAndamento), "Conversas ativas", "Ver conversas", Appearance.Lightweight, NavigateToMessages),
+            new(new Icons.Regular.Size24.PeopleCommunity(), "Clientes", GetStat(_stats?.TotalClientes), "Clientes cadastrados", "Ver clientes", Appearance.Lightweight, NavigateToClientes),
+            new(new Icons.Regular.Size24.Clock(), "Hoje", GetStat(_stats?.AtendimentosHoje), "Atendimentos hoje", "Ver detalhes", Appearance.Lightweight, NavigateToMessages),
+        ],
+        UserRoles.Atendente =>
+        [
+            new(new Icons.Regular.Size24.AlertBadge(), "Atendimentos Pendentes", GetStat(_stats?.AtendimentosPendentes), "Aguardando atendimento", _isLoadingStats ? "Atualizando..." : "Atualizar", Appearance.Accent, () => { _ = LoadDashboardStats(); }, SecondaryButtonText: "Visualizar", SecondaryButtonAppearance: Appearance.Accent, SecondaryOnClick: NavigateToMessages),
+            new(new Icons.Regular.Size24.Chat(), "Minhas Conversas", GetStat(_stats?.AtendimentosEmAndamento), "Conversas ativas agora", "Abrir conversas", Appearance.Accent, NavigateToMessages),
+            new(new Icons.Regular.Size24.CheckmarkCircle(), "Finalizados Hoje", GetStat(_stats?.AtendimentosFinalizadosHoje), "Atendimentos finalizados", "Ver histórico", Appearance.Lightweight, NavigateToMessages),
+            // "Tempo Médio" removido: KPI requer cálculo de AVG(DataFim - DataInicio) via SQL.
+            // Ver docs/MIGRATION_PLAN.md — planejado para Sprint 3.
+        ],
+        _ => []
+    };
+
+    private List<QuickAction> GetQuickActions() => CurrentUser?.Role switch
+    {
+        UserRoles.Gestor =>
+        [
+            new(new Icons.Regular.Size16.Building(), "Nova Farmácia", Appearance.Outline, NavigateToFarmacias),
+            new(new Icons.Regular.Size16.PersonAdd(), "Novo Administrador", Appearance.Outline, NavigateToAdministradores),
+            new(new Icons.Regular.Size16.DocumentText(), "Relatórios", Appearance.Outline, NavigateToRelatorios),
+            new(new Icons.Regular.Size16.Settings(), "Configurações", Appearance.Outline, NavigateToConfiguracoes),
+        ],
+        UserRoles.Administrador =>
+        [
+            new(new Icons.Regular.Size16.Chat(), "Atendimentos", Appearance.Outline, NavigateToMessages),
+            new(new Icons.Regular.Size16.PeopleCommunity(), "Clientes", Appearance.Outline, NavigateToClientes),
+            new(new Icons.Regular.Size16.PersonAdd(), "Novo Atendente", Appearance.Outline, NavigateToAtendentes),
+            new(new Icons.Regular.Size16.DocumentText(), "Relatórios", Appearance.Outline, NavigateToRelatorios),
+        ],
+        UserRoles.Atendente =>
+        [
+            new(new Icons.Regular.Size16.Chat(), "Iniciar Atendimento", Appearance.Accent, NavigateToMessages),
+            new(new Icons.Regular.Size16.Search(), "Buscar Cliente", Appearance.Outline, NavigateToClientes),
+            new(new Icons.Regular.Size16.Headphones(), "Templates", Appearance.Outline, NavigateToMessages),
+            new(new Icons.Regular.Size16.History(), "Meu Histórico", Appearance.Outline, NavigateToMessages),
+        ],
+        _ => []
+    };
+
+    private void NavigateToMessages() => Navigation.NavigateTo("/messages");
+    private void NavigateToClientes() => Navigation.NavigateTo("/clientes");
+    private void NavigateToAtendentes() => Navigation.NavigateTo("/atendentes");
+    private void NavigateToRelatorios() => Navigation.NavigateTo("/relatorios");
+    private void NavigateToFarmacias() => Navigation.NavigateTo("/farmacias");
+    private void NavigateToAdministradores() => Navigation.NavigateTo("/administradores");
+    private void NavigateToConfiguracoes() => Navigation.NavigateTo("/configuracoes");
+    private void NavigateToLogin()
+    {
+        try
+        {
+            var path = new Uri(Navigation.Uri).PathAndQuery;
+            Navigation.NavigateTo($"/login?returnUrl={System.Uri.EscapeDataString(path)}");
+        }
+        catch
+        {
+            Navigation.NavigateTo($"/login?returnUrl={System.Uri.EscapeDataString(Navigation.Uri)}");
+        }
+    }
+
+    private record StatsCard(Icon Icon, string Title, string Value, string Description, string ButtonText, Appearance ButtonAppearance, Action OnClick, string? SecondaryButtonText = null, Appearance? SecondaryButtonAppearance = null, Action? SecondaryOnClick = null);
+    private record QuickAction(Icon Icon, string Label, Appearance ButtonAppearance, Action OnClick);
+    private record ActivityItem(Icon Icon, Color IconColor, string Title, string Time);
+
+    private List<PendingAtendimentoItem> _pendingItems = new();
+
+    // Atendimento.DataInicio (DateTime.UtcNow) e Mensagem.ReceivedAt (DateTime.UtcNow) registram os
+    // timestamps de criação de cada atendimento/mensagem pendente na camada de aplicação.
+    // O banco de dados também define defaultValueSql: "NOW()" como fallback de nível de schema,
+    // garantindo que ambos os campos sejam gravados como "timestamp with time zone" e permitindo
+    // à Gestão analisar tempos de resposta.
+    private record PendingAtendimentoItem(int Id, string ClienteNome, string WhatsAppId, string UltimaMensagem, DateTime DataInicio);
+
+    private string GetTimeAgo(DateTime dateTime)
+    {
+        var timeSpan = DateTime.Now - dateTime;
+        if (timeSpan.TotalMinutes < 1) return "Agora";
+        if (timeSpan.TotalMinutes < 60) return $"{(int)timeSpan.TotalMinutes}min atrás";
+        if (timeSpan.TotalHours < 24) return $"{(int)timeSpan.TotalHours}h atrás";
+        return dateTime.ToString(Consts.Formato.DataHora);
+    }
+}

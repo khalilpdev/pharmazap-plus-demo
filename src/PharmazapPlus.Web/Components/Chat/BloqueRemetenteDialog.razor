@@ -1,0 +1,196 @@
+@using PharmazapPlus.Shared.Enums
+@using PharmazapPlus.Shared.Models.Mensagens
+@using Microsoft.FluentUI.AspNetCore.Components
+
+@inject ILogger<BloqueRemetenteDialog> Logger
+
+<FluentDialog @ref="_dialog" Modal="true" Hidden="@(!Visible)" TrapFocus="true"
+              @ondialogdismiss="HandleCancel"
+              aria-label="Bloquear Remetente">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Prohibited)" />
+                <FluentLabel Typo="Typography.Subject">Bloquear Remetente</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="HandleCancel" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0;">
+
+            <FluentMessageBar Intent="@MessageIntent.Warning">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Warning)" Slot="start" />
+                Esta ação apagará todas as mensagens deste remetente e impedirá recebimento futuro.
+            </FluentMessageBar>
+
+            <div>
+                <FluentLabel Typo="Typography.Subject">Número do remetente</FluentLabel>
+                <FluentLabel Style="font-size: 1.25rem; font-weight: 600; color: var(--accent-fill-rest);">
+                    @NumeroFormatado
+                </FluentLabel>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(ContatoNome))
+            {
+                <div>
+                    <FluentLabel Typo="Typography.Subject">Nome do contato</FluentLabel>
+                    <FluentLabel>@ContatoNome</FluentLabel>
+                </div>
+            }
+
+            <FluentTextField @bind-Value="@_motivo"
+                             Label="Motivo do bloqueio (opcional)"
+                             Placeholder="Ex: Spam, Abuso, Incompatibilidade..."
+                             Style="width: 100%;" />
+
+            @if (IsAdminOrGestor)
+            {
+                <div>
+                    <FluentLabel Typo="Typography.Subject">Escopo do bloqueio *</FluentLabel>
+                    <FluentSelect TOption="string" @bind-Value="@_escopo" Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                        <FluentOption Value="Local">Local - Apenas nesta farmácia</FluentOption>
+                        <FluentOption Value="Global">Global - Todas as farmácias</FluentOption>
+                    </FluentSelect>
+                    @if (_escopo == "Global")
+                    {
+                        <FluentMessageBar Intent="@MessageIntent.Warning" Style="margin-top: 8px;">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Warning)" Slot="start" />
+                            Este bloqueio afetará TODAS as farmácias da rede.
+                        </FluentMessageBar>
+                    }
+                </div>
+            }
+            else
+            {
+                <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.875rem;">
+                    Escopo: Local (apenas para sua farmácia)
+                </FluentLabel>
+            }
+
+            <FluentCheckbox @bind-Value="@_confirmaBloqueia">
+                Confirmo o bloqueio deste remetente
+            </FluentCheckbox>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_errorMessage</FluentMessageBar>
+            }
+
+        </FluentStack>
+    </FluentDialogBody>
+
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="HandleCancel" Disabled="@_isBlocking">
+            Cancelar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="HandleBloquear" Disabled="@(!_confirmaBloqueia || _isBlocking)">
+            @if (_isBlocking)
+            {
+                <FluentProgressRing Style="width:16px; height:16px;" />
+                <span style="margin-left:0.5rem;">Bloqueando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Prohibited)" Slot="start" Color="Color.Fill" />
+                <span>Bloquear Remetente</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    public record BloqueRemetenteRequest
+    {
+        public string Escopo { get; set; } = "Local";
+        public string? Motivo { get; set; }
+    }
+
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public Atendimento? Atendimento { get; set; }
+    [Parameter] public string? CurrentUserRole { get; set; }
+    [Parameter] public EventCallback<BloqueRemetenteRequest> OnBloquear { get; set; }
+
+    private FluentDialog? _dialog;
+    private string _motivo = "";
+    private string _escopo = "Local";
+    private bool _confirmaBloqueia = false;
+    private bool _isBlocking = false;
+    private string _errorMessage = "";
+
+    private string NumeroFormatado => Atendimento?.WhatsAppId.FormatTelefone() ?? "";
+    private string ContatoNome => Atendimento?.Cliente?.Nome ?? "";
+
+    private bool IsAdminOrGestor =>
+        string.Equals(CurrentUserRole, UserRoles.Gestor, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(CurrentUserRole, UserRoles.Administrador, StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnParametersSet()
+    {
+        if (!Visible)
+        {
+            ResetForm();
+        }
+        else if (Atendimento != null && _escopo == "Local")
+        {
+            // Sempre começar com Local se não for Admin/Gestor
+            if (!IsAdminOrGestor)
+                _escopo = "Local";
+        }
+    }
+
+    private void ResetForm()
+    {
+        _motivo = "";
+        _escopo = "Local";
+        _confirmaBloqueia = false;
+        _isBlocking = false;
+        _errorMessage = "";
+    }
+
+    private async Task HandleBloquear()
+    {
+        if (Atendimento == null)
+        {
+            _errorMessage = "Atendimento inválido";
+            return;
+        }
+
+        _isBlocking = true;
+        _errorMessage = "";
+
+        try
+        {
+            var request = new BloqueRemetenteRequest
+            {
+                Escopo = _escopo,
+                Motivo = string.IsNullOrWhiteSpace(_motivo) ? null : _motivo
+            };
+
+            await OnBloquear.InvokeAsync(request);
+            await VisibleChanged.InvokeAsync(false);
+            ResetForm();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao bloquear remetente");
+            _errorMessage = "Erro ao bloquear remetente. Tente novamente.";
+        }
+        finally
+        {
+            _isBlocking = false;
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        await VisibleChanged.InvokeAsync(false);
+        ResetForm();
+    }
+}

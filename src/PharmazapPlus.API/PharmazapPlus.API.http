@@ -1,0 +1,13 @@
+@PharmazapPlus.API_HostAddress = https://localhost:5051
+
+POST {{PharmazapPlus.API_HostAddress}}/api/whatsapp/mock/mensagem
+Content-Type: application/json
+Accept: application/json
+
+{
+  "from": "5562998808389",
+  "farmaciaId": 1,
+  "text": "Olá, preciso renovar minha receita"
+}
+
+###

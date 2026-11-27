@@ -1,0 +1,1130 @@
+@page "/clientes"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = UserRoles.AdministradorOuAtendente)]
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<Clientes> Logger
+@inject IPharmazapApiService PharmazapApiService
+@inject IToastService ToastService
+
+<PageTitle>Clientes - Pharmazap Plus</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" Style="height: 100%; overflow: hidden;">
+    @if (CurrentUser != null)
+    {
+        <div style="flex-shrink: 0; width: 100%;">
+            <FluentCard Style="padding: 1rem 2rem; border-radius: 0; width: 100%;">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="12" Style="flex: 1; min-width: 0;">
+                        <FluentIcon Icon="@(Icons.Regular.Size32.PeopleCommunity)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="min-width: 0; overflow: hidden;">
+                            <FluentLabel Typo="Typography.PageTitle" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Gestão de Clientes</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Gerencie sua base de clientes e informações de contato</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="margin-left: auto; flex-shrink: 0; padding-left: 1rem;">
+                        <FluentButton Appearance="Appearance.Outline" @onclick="ShowImportDialog">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.ArrowUpload)" Slot="start" />
+                            Importar
+                        </FluentButton>
+                        <FluentButton Appearance="Appearance.Outline" @onclick="ExportClientes">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.ArrowDownload)" Slot="start" />
+                            Exportar
+                        </FluentButton>
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovoCliente">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.PersonAdd)" Slot="start" Color="Color.Fill" />
+                            Novo Cliente
+                        </FluentButton>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+        </div>
+
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+            <!-- Debug: Mostrar estado do carregamento -->
+            @if (IsLoadingClientes)
+            {
+                <FluentCard Style="padding: 1rem; background: var(--warning-fill-rest);">
+                    <FluentLabel>⏳ Carregando clientes... (ClientesList.Count: @ClientesList.Count)</FluentLabel>
+                </FluentCard>
+            }
+
+            <FluentCard Class="search-card" Style="position: relative; z-index: 10; overflow: visible;">
+                <div class="search-filters">
+                    <FluentTextField @bind-Value="@SearchQuery"
+                                    Placeholder="Buscar por nome, telefone ou email..."
+                                    Style="flex: 1;"
+                                    @onkeydown="HandleSearchKeyDown">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Search)" Slot="start" />
+                    </FluentTextField>
+
+                       <FluentSelect TOption="string" 
+                                    @bind-Value="@FilterStatus"
+                                    Style="min-width: 200px; position: relative; z-index: 30; overflow: visible;">
+                         <FluentOption TOption="string" Value="all">Todos os clientes</FluentOption>
+                         <FluentOption TOption="string" Value="active">Ativos</FluentOption>
+                         <FluentOption TOption="string" Value="inactive">Inativos</FluentOption>
+                         <FluentOption TOption="string" Value="new">Novos (último mês)</FluentOption>
+                     </FluentSelect>
+
+                    <FluentButton Appearance="Appearance.Stealth" @onclick="ToggleAdvancedFilters">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Filter)" Slot="start" />
+                        Filtros Avançados
+                    </FluentButton>
+                </div>
+
+                @if (ShowAdvancedFilters)
+                {
+                    <div class="advanced-filters" style="position: relative; z-index: 10; overflow: visible;">
+                        <FluentTextField @bind-Value="@FilterCity"
+                                        Placeholder="Cidade"
+                                        Style="flex: 1;">
+                        </FluentTextField>
+
+                        <FluentSelect TOption="string"
+                                      @bind-Value="@FilterState"
+                                      Style="flex: 1; min-width: 180px; position: relative; z-index: 30; overflow: visible;">
+                            <FluentOption TOption="string" Value="">Todos os estados</FluentOption>
+                            <FluentOption TOption="string" Value="AC">AC - Acre</FluentOption>
+                            <FluentOption TOption="string" Value="AL">AL - Alagoas</FluentOption>
+                            <FluentOption TOption="string" Value="AP">AP - Amapá</FluentOption>
+                            <FluentOption TOption="string" Value="AM">AM - Amazonas</FluentOption>
+                            <FluentOption TOption="string" Value="BA">BA - Bahia</FluentOption>
+                            <FluentOption TOption="string" Value="CE">CE - Ceará</FluentOption>
+                            <FluentOption TOption="string" Value="DF">DF - Distrito Federal</FluentOption>
+                            <FluentOption TOption="string" Value="ES">ES - Espírito Santo</FluentOption>
+                            <FluentOption TOption="string" Value="GO">GO - Goiás</FluentOption>
+                            <FluentOption TOption="string" Value="MA">MA - Maranhão</FluentOption>
+                            <FluentOption TOption="string" Value="MT">MT - Mato Grosso</FluentOption>
+                            <FluentOption TOption="string" Value="MS">MS - Mato Grosso do Sul</FluentOption>
+                            <FluentOption TOption="string" Value="MG">MG - Minas Gerais</FluentOption>
+                            <FluentOption TOption="string" Value="PA">PA - Pará</FluentOption>
+                            <FluentOption TOption="string" Value="PB">PB - Paraíba</FluentOption>
+                            <FluentOption TOption="string" Value="PR">PR - Paraná</FluentOption>
+                            <FluentOption TOption="string" Value="PE">PE - Pernambuco</FluentOption>
+                            <FluentOption TOption="string" Value="PI">PI - Piauí</FluentOption>
+                            <FluentOption TOption="string" Value="RJ">RJ - Rio de Janeiro</FluentOption>
+                            <FluentOption TOption="string" Value="RN">RN - Rio Grande do Norte</FluentOption>
+                            <FluentOption TOption="string" Value="RS">RS - Rio Grande do Sul</FluentOption>
+                            <FluentOption TOption="string" Value="RO">RO - Rondônia</FluentOption>
+                            <FluentOption TOption="string" Value="RR">RR - Roraima</FluentOption>
+                            <FluentOption TOption="string" Value="SC">SC - Santa Catarina</FluentOption>
+                            <FluentOption TOption="string" Value="SP">SP - São Paulo</FluentOption>
+                            <FluentOption TOption="string" Value="SE">SE - Sergipe</FluentOption>
+                            <FluentOption TOption="string" Value="TO">TO - Tocantins</FluentOption>
+                        </FluentSelect>
+
+                        <FluentCheckbox @bind-Checked="@FilterUsoContinuo">
+                            Uso contínuo
+                        </FluentCheckbox>
+
+                        <FluentSelect TOption="string"
+                                      @bind-Value="@FilterPerfil"
+                                      Style="min-width: 180px; position: relative; z-index: 30; overflow: visible;">
+                            <FluentOption TOption="string" Value="all">Todos os perfis</FluentOption>
+                            <FluentOption TOption="string" Value="Prospecto">🔍 Prospecto</FluentOption>
+                            <FluentOption TOption="string" Value="Ocasional">🛒 Ocasional</FluentOption>
+                            <FluentOption TOption="string" Value="Recorrente">🔄 Recorrente</FluentOption>
+                            <FluentOption TOption="string" Value="UsoContinuo">💊 Uso Contínuo</FluentOption>
+                            <FluentOption TOption="string" Value="Fidelizado">⭐ Fidelizado</FluentOption>
+                        </FluentSelect>
+
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ListarClientes">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Search)" Slot="start" Color="Color.Fill" />
+                            Listar
+                        </FluentButton>
+
+                        <FluentButton Appearance="Appearance.Outline" @onclick="ClearFilters">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" Slot="start" />
+                            Limpar Filtros
+                        </FluentButton>
+                    </div>
+                }
+            </FluentCard>
+
+            <FluentCard Class="stats-summary" Style="position: relative; z-index: 1;">
+                <div class="stat-item">
+                    <FluentIcon Icon="@(Icons.Regular.Size24.People)" Class="stat-icon" />
+                    <div>
+                        <div class="stat-value">@TotalClientes</div>
+                        <div class="stat-label">Total de Clientes</div>
+                    </div>
+                </div>
+
+                <div class="stat-item">
+                    <FluentIcon Icon="@(Icons.Regular.Size24.PersonAdd)" Class="stat-icon success" />
+                    <div>
+                        <div class="stat-value">@ClientesNovos</div>
+                        <div class="stat-label">Novos (30 dias)</div>
+                    </div>
+                </div>
+
+                <div class="stat-item">
+                    <FluentIcon Icon="@(Icons.Regular.Size24.Chat)" Class="stat-icon primary" />
+                    <div>
+                        <div class="stat-value">@ClientesAtivos</div>
+                        <div class="stat-label">Ativos</div>
+                    </div>
+                </div>
+
+                <div class="stat-item">
+                    <FluentIcon Icon="@(Icons.Regular.Size24.Pill)" Class="stat-icon warning" />
+                    <div>
+                        <div class="stat-value">@ClientesUsoContinuo</div>
+                        <div class="stat-label">Uso Contínuo</div>
+                    </div>
+                </div>
+
+                <div class="stat-item">
+                    <FluentIcon Icon="@(Icons.Regular.Size24.Star)" Class="stat-icon" Style="color: #7c3aed;" />
+                    <div>
+                        <div class="stat-value">@ClientesFidelizados</div>
+                        <div class="stat-label">Fidelizados</div>
+                    </div>
+                </div>
+
+                <div class="stat-item">
+                    <FluentIcon Icon="@(Icons.Regular.Size24.PersonSearch)" Class="stat-icon" Style="color: #6b7280;" />
+                    <div>
+                        <div class="stat-value">@ClientesProspectos</div>
+                        <div class="stat-label">Prospectos</div>
+                    </div>
+                </div>
+            </FluentCard>
+
+            <FluentCard Class="clientes-table-card" Style="position: relative; z-index: 1;">
+                @if (IsLoadingClientes)
+                {
+                    <div class="loading-state">
+                        <FluentProgressRing />
+                        <p>Carregando clientes...</p>
+                    </div>
+                }
+                else if (!ClientesFiltrados.Any())
+                {
+                    <div class="empty-state">
+                        <FluentIcon Icon="@(Icons.Regular.Size48.PeopleCommunity)" />
+                        <h3>Nenhum cliente encontrado</h3>
+                        <p>Comece adicionando clientes ou ajuste seus filtros de busca</p>
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovoCliente">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.PersonAdd)" Slot="start" Color="Color.Fill" />
+                            Adicionar Primeiro Cliente
+                        </FluentButton>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-container">
+                        <FluentDataGrid Items="@ClientesFiltrados"
+                                       GridTemplateColumns="minmax(180px,auto) minmax(140px,auto) minmax(220px,auto) minmax(150px,auto) minmax(130px,auto) minmax(130px,auto) minmax(170px,auto) minmax(160px,auto)"
+                                       Style="width: 100%; min-width: max-content;">
+                            <PropertyColumn Property="@(c => c.Nome)" 
+                                          Title="Nome"
+                                          Sortable="true">
+                                <ColumnOptions>
+                                    <div class="column-header">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Person)" />
+                                        <span>Nome</span>
+                                    </div>
+                                </ColumnOptions>
+                            </PropertyColumn>
+
+                            <PropertyColumn Property="@(c => c.WhatsAppId)" 
+                                          Title="WhatsApp"
+                                          Sortable="true">
+                                <ColumnOptions>
+                                    <div class="column-header">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Chat)" />
+                                        <span>WhatsApp</span>
+                                    </div>
+                                </ColumnOptions>
+                            </PropertyColumn>
+
+                            <PropertyColumn Property="@(c => c.Email)" 
+                                          Title="Email"
+                                          Sortable="true">
+                                <ColumnOptions>
+                                    <div class="column-header">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Mail)" />
+                                        <span>Email</span>
+                                    </div>
+                                </ColumnOptions>
+                            </PropertyColumn>
+
+                            <PropertyColumn Property="@(c => c.Cidade)" 
+                                          Title="Cidade"
+                                          Sortable="true">
+                                <ColumnOptions>
+                                    <div class="column-header">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Location)" />
+                                        <span>Cidade</span>
+                                    </div>
+                                </ColumnOptions>
+                            </PropertyColumn>
+
+                            <TemplateColumn Title="Tipo">
+                                <ColumnOptions>
+                                    <div class="column-header">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Person)" />
+                                        <span>Tipo</span>
+                                    </div>
+                                </ColumnOptions>
+                                <ChildContent>
+                                    @switch (context.Tipo)
+                                    {
+                                        case ClienteTipo.PessoaJuridica:
+                                            <FluentBadge Appearance="Appearance.Accent"
+                                                        BackgroundColor="#3b82f6"
+                                                        Color="white">
+                                                PJ
+                                            </FluentBadge>
+                                            break;
+                                        case ClienteTipo.ProfissionalSaude:
+                                            <FluentBadge Appearance="Appearance.Accent"
+                                                        BackgroundColor="#8b5cf6"
+                                                        Color="white">
+                                                Prof. Saúde
+                                            </FluentBadge>
+                                            break;
+                                        default:
+                                            <FluentBadge Appearance="Appearance.Neutral">
+                                                PF
+                                            </FluentBadge>
+                                            break;
+                                    }
+                                </ChildContent>
+                            </TemplateColumn>
+
+                            <TemplateColumn Title="Status">
+                                <ColumnOptions>
+                                    <div class="column-header">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.Status)" />
+                                        <span>Status</span>
+                                    </div>
+                                </ColumnOptions>
+                                <ChildContent>
+                                    @switch (context.Status)
+                                    {
+                                        case ClienteStatus.Ativo:
+                                            <FluentBadge Appearance="Appearance.Accent"
+                                                        BackgroundColor="#10b981"
+                                                        Color="white">
+                                                Ativo
+                                            </FluentBadge>
+                                            break;
+                                        case ClienteStatus.Inativo:
+                                            <FluentBadge Appearance="Appearance.Neutral">
+                                                Inativo
+                                            </FluentBadge>
+                                            break;
+                                        case ClienteStatus.Bloqueado:
+                                            <FluentBadge Appearance="Appearance.Accent"
+                                                        BackgroundColor="#ef4444"
+                                                        Color="white">
+                                                Bloqueado
+                                            </FluentBadge>
+                                            break;
+                                        default:
+                                            <FluentBadge Appearance="Appearance.Neutral">
+                                                Potencial
+                                            </FluentBadge>
+                                            break;
+                                    }
+                                </ChildContent>
+                            </TemplateColumn>
+
+                            <TemplateColumn Title="Perfil">
+                                <ColumnOptions>
+                                    <div class="column-header">
+                                        <FluentIcon Icon="@(Icons.Regular.Size16.PersonBoard)" />
+                                        <span>Perfil</span>
+                                    </div>
+                                </ColumnOptions>
+                                <ChildContent>
+                                    @{
+                                        var (bgColor, label) = context.PerfilCompra switch
+                                        {
+                                            ClientePerfilCompraEnum.Fidelizado  => ("#7c3aed", "⭐ Fidelizado"),
+                                            ClientePerfilCompraEnum.UsoContinuo => ("#f59e0b", "💊 Uso Contínuo"),
+                                            ClientePerfilCompraEnum.Recorrente  => ("#10b981", "🔄 Recorrente"),
+                                            ClientePerfilCompraEnum.Ocasional   => ("#3b82f6", "🛒 Ocasional"),
+                                            _                                   => ("#6b7280", "🔍 Prospecto")
+                                        };
+                                    }
+                                    <FluentBadge Appearance="Appearance.Accent"
+                                                BackgroundColor="@bgColor"
+                                                Color="white">
+                                        @label
+                                    </FluentBadge>
+                                </ChildContent>
+                            </TemplateColumn>
+
+                            <TemplateColumn Title="Ações">
+                                <ChildContent>
+                                    <div class="action-buttons">
+                                        <FluentButton Appearance="Appearance.Stealth" 
+                                                     Title="Ver detalhes"
+                                                     @onclick="@(() => ViewCliente(context))">
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.Eye)" />
+                                        </FluentButton>
+                                        <FluentButton Appearance="Appearance.Stealth" 
+                                                     Title="Editar"
+                                                     @onclick="@(() => EditCliente(context))">
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.Edit)" />
+                                        </FluentButton>
+                                        @if (context.TotalPedidos > 0)
+                                        {
+                                            <FluentButton Appearance="Appearance.Stealth"
+                                                         Title="Ver Compras"
+                                                         @onclick="@(() => ShowComprasDialog(context))">
+                                                <FluentIcon Icon="@(Icons.Regular.Size16.ShoppingBag)" />
+                                            </FluentButton>
+                                        }
+                                        <FluentButton Appearance="Appearance.Stealth" 
+                                                     Title="Excluir"
+                                                     @onclick="@(() => ConfirmDeleteCliente(context))">
+                                            <FluentIcon Icon="@(Icons.Regular.Size16.Delete)" />
+                                        </FluentButton>
+                                    </div>
+                                </ChildContent>
+                            </TemplateColumn>
+                        </FluentDataGrid>
+                    </div>
+
+                    <div class="pagination">
+                        <FluentButton Appearance="Appearance.Stealth" 
+                                     Disabled="@(CurrentPage == 1)"
+                                     @onclick="PreviousPage">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.ChevronLeft)" />
+                        </FluentButton>
+
+                        <span class="pagination-info">
+                            Página @CurrentPage de @TotalPages (@GetTotalClientesFiltrados() clientes encontrados)
+                        </span>
+
+                        <FluentButton Appearance="Appearance.Stealth" 
+                                     Disabled="@(CurrentPage == TotalPages)"
+                                     @onclick="NextPage">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.ChevronRight)" />
+                        </FluentButton>
+                    </div>
+                }
+            </FluentCard>
+        </div>
+
+        <!-- Import/Export Component -->
+        <ImportExport ShowImportDialog="@ShowImport" 
+                     ShowImportDialogChanged="@((bool value) => ShowImport = value)" />
+
+        <!-- Confirmation Dialog -->
+        <FluentDialog @ref="_confirmDialog" Modal="true" Hidden="@(!_showConfirmDialog)" TrapFocus="true"
+                      @ondialogdismiss="CancelConfirm">
+            <FluentDialogHeader>
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+                    <FluentLabel Typo="Typography.Subject">@_confirmTitle</FluentLabel>
+                    <div style="margin-left:auto;">
+                        <FluentButton Appearance="Appearance.Stealth" @onclick="CancelConfirm" aria-label="Fechar" Title="Fechar">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                        </FluentButton>
+                    </div>
+                </FluentStack>
+            </FluentDialogHeader>
+            <FluentDialogBody>
+                <p>@_confirmMessage</p>
+            </FluentDialogBody>
+            <FluentDialogFooter>
+                <FluentButton Appearance="Appearance.Outline" @onclick="CancelConfirm">Cancelar</FluentButton>
+                <FluentButton Appearance="Appearance.Accent" @onclick="ExecuteConfirm">Confirmar</FluentButton>
+            </FluentDialogFooter>
+        </FluentDialog>
+
+        <ClienteFormDialog Visible="@_showFormDialog"
+                           VisibleChanged="@OnFormDialogVisibleChanged"
+                           Cliente="@_editingCliente"
+                           OnSave="@HandleFormSave" />
+
+        <!-- Compras Dialog -->
+        <FluentDialog Modal="true" Hidden="@(!_showComprasDialog)" TrapFocus="true"
+                      @ondialogdismiss="CloseComprasDialog">
+            <FluentDialogHeader>
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                             HorizontalGap="8" Style="width:100%">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.ShoppingBag)" />
+                        <FluentLabel Typo="Typography.Subject">Compras de @(_comprasCliente?.Nome ?? "")</FluentLabel>
+                    </FluentStack>
+                    <div style="margin-left:auto;">
+                        <FluentButton Appearance="Appearance.Stealth" @onclick="CloseComprasDialog"
+                                      aria-label="Fechar" Title="Fechar">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                        </FluentButton>
+                    </div>
+                </FluentStack>
+            </FluentDialogHeader>
+            <FluentDialogBody>
+                @if (_isLoadingCompras)
+                {
+                    <div style="display:flex; justify-content:center; padding: 2rem;">
+                        <FluentProgressRing />
+                    </div>
+                }
+                else if (_comprasList.Count == 0)
+                {
+                    <div style="padding: 2rem; text-align: center; color: var(--neutral-foreground-hint);">
+                        <FluentIcon Icon="@(Icons.Regular.Size24.ShoppingBag)" />
+                        <p>Nenhuma compra registrada para este cliente.</p>
+                    </div>
+                }
+                else
+                {
+                    <FluentDataGrid Items="@_comprasList.AsQueryable()"
+                                   GridTemplateColumns="minmax(120px,auto) minmax(150px,auto) minmax(100px,auto) minmax(100px,auto)"
+                                   Style="width: 100%; min-width: max-content;">
+                        <TemplateColumn Title="Data">
+                            <ChildContent>
+                                @context.DataInicio.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                            </ChildContent>
+                        </TemplateColumn>
+                        <TemplateColumn Title="Atendente">
+                            <ChildContent>
+                                @(context.Atendente?.Nome ?? "—")
+                            </ChildContent>
+                        </TemplateColumn>
+                        <TemplateColumn Title="Valor da Venda">
+                            <ChildContent>
+                                @(context.ValorVenda.HasValue ? context.ValorVenda.Value.ToString("C2") : "—")
+                            </ChildContent>
+                        </TemplateColumn>
+                        <TemplateColumn Title="Status">
+                            <ChildContent>
+                                @(context.Status ?? "—")
+                            </ChildContent>
+                        </TemplateColumn>
+                    </FluentDataGrid>
+                }
+            </FluentDialogBody>
+            <FluentDialogFooter>
+                <FluentButton Appearance="Appearance.Outline" @onclick="CloseComprasDialog">Fechar</FluentButton>
+            </FluentDialogFooter>
+        </FluentDialog>
+    }
+    else
+    {
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px;">
+            <FluentProgressRing />
+            <FluentLabel Style="color: var(--neutral-foreground-hint);">Carregando clientes...</FluentLabel>
+        </div>
+    }
+</FluentStack>
+
+@code {
+    private UserInfo? CurrentUser { get; set; }
+    private bool _initialized = false;
+    private List<Cliente> ClientesList { get; set; } = new();
+    private IQueryable<Cliente> ClientesFiltrados
+    {
+        get
+        {
+            var filtered = ClientesList.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                filtered = filtered.Where(c =>
+                    (c.Nome?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (c.Email?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (c.WhatsAppId?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (c.Telefone?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            if (!string.IsNullOrWhiteSpace(FilterCity))
+            {
+                filtered = filtered.Where(c => c.Cidade?.Contains(FilterCity, StringComparison.OrdinalIgnoreCase) ?? false);
+            }
+
+            if (!string.IsNullOrWhiteSpace(FilterState))
+            {
+                filtered = filtered.Where(c => string.Equals(c.Estado, FilterState, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (FilterUsoContinuo)
+            {
+                filtered = filtered.Where(c => c.UsoContinuo);
+            }
+
+            if (FilterStatus != "all")
+            {
+                filtered = FilterStatus switch
+                {
+                    // Considera Status (enum) E Ativo (bool) - clienteAtivo se Ativo=true OU Status=Ativo
+                    "active" => filtered.Where(c => c.Ativo || c.Status == ClienteStatus.Ativo),
+                    // Cliente inativo: Ativo=false OU Status=Inativo/Bloqueado/Potencial
+                    "inactive" => filtered.Where(c => !c.Ativo || c.Status == ClienteStatus.Inativo || c.Status == ClienteStatus.Bloqueado || c.Status == ClienteStatus.Potencial),
+                    "new" => filtered.Where(c => c.DataCadastro >= DateTime.Now.AddDays(-30)),
+                    _ => filtered
+                };
+            }
+
+            if (FilterPerfil != "all" && Enum.TryParse<ClientePerfilCompraEnum>(FilterPerfil, out var perfilFiltro))
+            {
+                filtered = filtered.Where(c => c.PerfilCompra == perfilFiltro);
+            }
+
+            // Aplicar paginação
+            filtered = filtered
+                .Skip((CurrentPage - 1) * PageSize)
+                .Take(PageSize);
+
+            return filtered.AsQueryable();
+        }
+    }
+    
+    private string SearchQuery { get; set; } = "";
+    private string FilterStatus { get; set; } = "all";
+    private string FilterCity { get; set; } = "";
+    private string FilterState { get; set; } = "";
+    private bool FilterUsoContinuo { get; set; } = false;
+    private string FilterPerfil { get; set; } = "all";
+    private bool ShowAdvancedFilters { get; set; } = false;
+    private bool ShowImport { get; set; } = false;
+
+    // Form dialog state
+    private bool _showFormDialog = false;
+    private Cliente? _editingCliente = null;
+
+    // Confirmation dialog state
+    private FluentDialog? _confirmDialog;
+    private bool _showConfirmDialog = false;
+    private string _confirmTitle = "";
+    private string _confirmMessage = "";
+    private Func<Task>? _confirmAction = null;
+
+    // Compras dialog state
+    private bool _showComprasDialog = false;
+    private bool _isLoadingCompras = false;
+    private Cliente? _comprasCliente = null;
+    private List<AtendimentoCompraDto> _comprasList = new();
+
+    private bool IsLoadingClientes { get; set; } = true;
+    private int CurrentPage { get; set; } = 1;
+    private int PageSize { get; set; } = 20;
+
+    private int GetTotalClientesFiltrados()
+    {
+        var filtered = ClientesList.AsEnumerable();
+
+        if (!string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            filtered = filtered.Where(c =>
+                (c.Nome?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (c.Email?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (c.WhatsAppId?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                (c.Telefone?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        if (!string.IsNullOrWhiteSpace(FilterCity))
+        {
+            filtered = filtered.Where(c => c.Cidade?.Contains(FilterCity, StringComparison.OrdinalIgnoreCase) ?? false);
+        }
+
+        if (!string.IsNullOrWhiteSpace(FilterState))
+        {
+            filtered = filtered.Where(c => string.Equals(c.Estado, FilterState, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (FilterUsoContinuo)
+        {
+            filtered = filtered.Where(c => c.UsoContinuo);
+        }
+
+        if (FilterStatus != "all")
+        {
+            filtered = FilterStatus switch
+            {
+                // Considera Status (enum) E Ativo (bool) - clienteAtivo se Ativo=true OU Status=Ativo
+                "active" => filtered.Where(c => c.Ativo || c.Status == ClienteStatus.Ativo),
+                // Cliente inativo: Ativo=false OU Status=Inativo/Bloqueado/Potencial
+                "inactive" => filtered.Where(c => !c.Ativo || c.Status == ClienteStatus.Inativo || c.Status == ClienteStatus.Bloqueado || c.Status == ClienteStatus.Potencial),
+                "new" => filtered.Where(c => c.DataCadastro >= DateTime.Now.AddDays(-30)),
+                _ => filtered
+            };
+        }
+
+        if (FilterPerfil != "all" && Enum.TryParse<ClientePerfilCompraEnum>(FilterPerfil, out var perfilFiltro))
+        {
+            filtered = filtered.Where(c => c.PerfilCompra == perfilFiltro);
+        }
+
+        return filtered.Count();
+    }
+
+    private int TotalPages => (int)Math.Ceiling((double)GetTotalClientesFiltrados() / PageSize);
+
+    // Statistics
+    private int TotalClientes => ClientesList.Count;
+    private int ClientesNovos => ClientesList.Count(c => c.DataCadastro >= DateTime.Now.AddDays(-30));
+    private int ClientesAtivos => ClientesList.Count(c => c.Status == ClienteStatus.Ativo);
+    private int ClientesUsoContinuo => ClientesList.Count(c => c.UsoContinuo);
+    private int ClientesFidelizados => ClientesList.Count(c => c.PerfilCompra == ClientePerfilCompraEnum.Fidelizado);
+    private int ClientesProspectos => ClientesList.Count(c => c.PerfilCompra == ClientePerfilCompraEnum.Prospecto);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Logger.LogInformation("🔵 OnInitializedAsync START - _initialized: {Init}", _initialized);
+
+        if (_initialized) 
+        {
+            Logger.LogWarning("⚠️ OnInitializedAsync - Already initialized, returning early");
+            return;
+        }
+        _initialized = true;
+
+        try
+        {
+            Logger.LogInformation("🟡 Getting CurrentUser...");
+            CurrentUser = await AuthService.GetUserInfo();
+
+            if (CurrentUser == null)
+            {
+                Logger.LogWarning("🔴 CurrentUser is null in OnInitializedAsync");
+                Navigation.NavigateTo("/login", true);
+                return;
+            }
+
+            Logger.LogInformation("🟢 CurrentUser found: {UserId} ({Role})", CurrentUser.Id, CurrentUser.Role);
+            Logger.LogInformation("🟡 Calling LoadClientes...");
+            await LoadClientes();
+            Logger.LogInformation("🟢 OnInitializedAsync completed successfully");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "🔴 Error initializing clientes page: {Message}", ex.Message);
+            Navigation.NavigateTo("/login", true);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        Logger.LogInformation("🔵 OnAfterRenderAsync - firstRender: {First}, _initialized: {Init}", firstRender, _initialized);
+
+        if (!firstRender) return;
+
+        try
+        {
+            if (!_initialized)
+            {
+                Logger.LogWarning("⚠️ OnAfterRenderAsync - _initialized is false, initializing now");
+                CurrentUser = await AuthService.GetUserInfo();
+
+                if (CurrentUser == null)
+                {
+                    Navigation.NavigateTo("/login", true);
+                    return;
+                }
+
+                await LoadClientes();
+                _initialized = true;
+                await InvokeAsync(StateHasChanged);
+                Logger.LogInformation("🟢 OnAfterRenderAsync initialization completed");
+            }
+            else
+            {
+                Logger.LogInformation("ℹ️ OnAfterRenderAsync - Already initialized, ClientesList: {Count}", ClientesList.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "🔴 Error in OnAfterRenderAsync: {Message}", ex.Message);
+        }
+    }
+
+    private async Task LoadClientes()
+    {
+        Logger.LogInformation("🔵 LoadClientes START - IsLoadingClientes: {Loading}, ClientesList.Count: {Count}", 
+            IsLoadingClientes, ClientesList.Count);
+
+        IsLoadingClientes = true;
+        StateHasChanged();
+
+        try
+        {
+            Logger.LogInformation("🟡 About to call PharmazapApiService.GetClientesAsync()");
+            ClientesList = await PharmazapApiService.GetClientesAsync();
+
+            Logger.LogInformation("🟢 GetClientesAsync completed. Returned: {Count} clientes", ClientesList.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "🔴 Error loading clientes: {Message}", ex.Message);
+            ToastService.ShowError($"Erro ao carregar clientes: {ex.Message}");
+        }
+        finally
+        {
+            IsLoadingClientes = false;
+            Logger.LogInformation("🟣 LoadClientes FINALLY - StateHasChanged called");
+            StateHasChanged();
+        }
+    }
+
+    private void HandleSearch()
+    {
+        StateHasChanged();
+    }
+
+    private void HandleSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void ListarClientes()
+    {
+        CurrentPage = 1;
+        StateHasChanged();
+    }
+
+    private void ToggleAdvancedFilters()
+    {
+        ShowAdvancedFilters = !ShowAdvancedFilters;
+    }
+
+    private void ClearFilters()
+    {
+        SearchQuery = "";
+        FilterStatus = "all";
+        FilterCity = "";
+        FilterState = "";
+        FilterUsoContinuo = false;
+        FilterPerfil = "all";
+        CurrentPage = 1;
+        ToastService.ShowSuccess("Filtros limpos com sucesso.");
+        StateHasChanged();
+    }
+
+    private void ShowImportDialog()
+    {
+        ShowImport = true;
+    }
+
+    private void ExportClientes()
+    {
+        // TODO: Implement export functionality
+        Logger.LogInformation("Export clientes");
+        ToastService.ShowWarning("Funcionalidade de exportação em desenvolvimento.");
+    }
+
+    private void ShowNovoCliente()
+    {
+        _editingCliente = null;
+        _showFormDialog = true;
+    }
+
+    private void ViewCliente(Cliente cliente)
+    {
+        _editingCliente = cliente;
+        _showFormDialog = true;
+    }
+
+    private void EditCliente(Cliente cliente)
+    {
+        _editingCliente = cliente;
+        _showFormDialog = true;
+    }
+
+    private async Task OnFormDialogVisibleChanged(bool visible)
+    {
+        _showFormDialog = visible;
+        StateHasChanged();
+    }
+
+    private async Task HandleFormSave((bool IsNew, CreateClienteDto? Create, UpdateClienteDto? Update) args)
+    {
+        _showFormDialog = false;
+
+        if (args.IsNew && args.Create != null)
+        {
+            var (success, message) = await PharmazapApiService.CreateClienteAsync(args.Create);
+            if (success)
+            {
+                ToastService.ShowSuccess("Cliente criado com sucesso!");
+                await LoadClientes();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao criar cliente: {message}");
+            }
+        }
+        else if (!args.IsNew && args.Update != null && _editingCliente != null)
+        {
+            var (success, message) = await PharmazapApiService.UpdateClienteAsync(_editingCliente.Id, args.Update);
+            if (success)
+            {
+                ToastService.ShowSuccess("Cliente atualizado com sucesso!");
+                await LoadClientes();
+            }
+            else
+            {
+                ToastService.ShowError($"Erro ao atualizar cliente: {message}");
+            }
+        }
+
+        _editingCliente = null;
+    }
+
+    private void ConfirmDeleteCliente(Cliente cliente)
+    {
+        var activeAtendimentos = cliente.Atendimentos?
+            .Count(a => a.StatusEnum == AtendimentoStatusEnum.Pendente ||
+                       a.StatusEnum == AtendimentoStatusEnum.EmAndamento) ?? 0;
+
+        if (activeAtendimentos > 0)
+        {
+            _confirmTitle = "Inativar Cliente";
+            _confirmMessage = $"O cliente {cliente.Nome} possui {activeAtendimentos} atendimento(s) ativo(s). " +
+                            "Ao inativar, não receberá novas mensagens automaticamente. " +
+                            "O cliente precisará ser reativado manualmente se entrar em contato.";
+        }
+        else
+        {
+            _confirmTitle = "Inativar Cliente";
+            _confirmMessage = $"Tem certeza que deseja inativar o cliente {cliente.Nome}? Esta ação pode ser desfeita posteriormente.";
+        }
+
+        _confirmAction = async () =>
+        {
+            var (success, message) = await PharmazapApiService.DeleteClienteAsync(cliente.Id);
+            if (success)
+            {
+                ToastService.ShowSuccess(message);
+                await LoadClientes();
+            }
+            else
+            {
+                ToastService.ShowError(message);
+            }
+        };
+        _showConfirmDialog = true;
+        StateHasChanged();
+    }
+
+    private async Task ExecuteConfirm()
+    {
+        _showConfirmDialog = false;
+        if (_confirmAction != null)
+            await _confirmAction();
+        _confirmAction = null;
+    }
+
+    private void CancelConfirm()
+    {
+        _showConfirmDialog = false;
+        _confirmAction = null;
+    }
+
+    private async Task ShowComprasDialog(Cliente cliente)
+    {
+        _comprasCliente = cliente;
+        _comprasList = new();
+        _showComprasDialog = true;
+        _isLoadingCompras = true;
+        StateHasChanged();
+
+        try
+        {
+            var atendimentos = await PharmazapApiService.GetAtendimentosClienteAsync(cliente.Id);
+            _comprasList = atendimentos.Where(a => a.ValorVenda.HasValue && a.ValorVenda.Value > 0).ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading compras for cliente {ClienteId}", cliente.Id);
+            ToastService.ShowError("Erro ao carregar compras do cliente.");
+        }
+        finally
+        {
+            _isLoadingCompras = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseComprasDialog()
+    {
+        _showComprasDialog = false;
+        _comprasCliente = null;
+        _comprasList = new();
+    }
+
+    private void PreviousPage()
+    {
+        if (CurrentPage > 1)
+        {
+            CurrentPage--;
+            StateHasChanged();
+        }
+    }
+
+    private void NextPage()
+    {
+        if (CurrentPage < TotalPages)
+        {
+            CurrentPage++;
+            StateHasChanged();
+        }
+    }
+}
+
+<style>
+    .search-card {
+        padding: 1.5rem;
+        position: relative;
+        z-index: 20;
+        overflow: visible;
+    }
+
+    .search-filters {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .advanced-filters {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--neutral-stroke-rest);
+        flex-wrap: wrap;
+        position: relative;
+        z-index: 20;
+        overflow: visible;
+    }
+
+    .stats-summary {
+        padding: 1.5rem;
+        position: relative;
+        z-index: 1;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .stat-item {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .stat-icon {
+        font-size: 40px;
+        color: var(--accent-foreground-rest);
+    }
+
+    .stat-icon.success {
+        color: var(--colorStatusSuccessForeground3, #10b981);
+    }
+
+    .stat-icon.primary {
+        color: var(--accent-foreground-rest);
+    }
+
+    .stat-icon.warning {
+        color: var(--colorStatusWarningForeground3, #f59e0b);
+    }
+
+    .stat-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--neutral-foreground-rest);
+        line-height: 1;
+    }
+
+    .stat-label {
+        font-size: 0.85rem;
+        color: var(--neutral-foreground-hint);
+        margin-top: 0.25rem;
+    }
+
+    .clientes-table-card {
+        padding: 1.5rem;
+        position: relative;
+        z-index: 1;
+    }
+
+    .table-container {
+        overflow-x: auto;
+    }
+
+    .column-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 0.25rem;
+    }
+
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--neutral-stroke-rest);
+    }
+
+    .pagination-info {
+        font-size: 0.9rem;
+        color: var(--neutral-foreground-hint);
+    }
+
+    .empty-state,
+    .loading-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 4rem 2rem;
+        color: var(--neutral-foreground-hint);
+        gap: 1rem;
+        text-align: center;
+    }
+
+    .empty-state h3 {
+        margin: 0;
+        font-size: 1.25rem;
+        color: var(--neutral-foreground-rest);
+    }
+
+    .loading-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        gap: 1rem;
+        color: var(--neutral-foreground-hint);
+    }
+
+    @@media (max-width: 768px) {
+        .stats-summary {
+            grid-template-columns: 1fr;
+        }
+
+        .search-filters {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .advanced-filters {
+            flex-direction: column;
+            align-items: stretch;
+        }
+    }
+</style>

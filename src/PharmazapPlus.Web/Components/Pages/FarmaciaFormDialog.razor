@@ -1,0 +1,398 @@
+@* PharmazapPlus.Web/Components/Pages/FarmaciaFormDialog.razor *@
+@using Microsoft.AspNetCore.Components.Forms
+
+@inject ILogger<FarmaciaFormDialog> Logger
+
+<FluentDialog @ref="_dialog" Modal="true" Hidden="@(!Visible)" TrapFocus="true"
+              @ondialogdismiss="HandleCancel"
+              aria-label="@(Farmacia == null ? "Nova Farmácia" : "Editar Farmácia")">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Building)" />
+                <FluentLabel Typo="Typography.Subject">@(Farmacia == null ? "Nova Farmácia" : "Editar Farmácia")</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="HandleCancel" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+
+    <FluentDialogBody Style="overflow: visible;">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 0.5rem 0; overflow: visible; position: relative; z-index: 30;">
+
+            <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold">Dados da Farmácia</FluentLabel>
+
+            <FluentTextField @bind-Value="@_nome"
+                             Label="Nome *"
+                             Placeholder="Nome da farmácia"
+                             Style="width: 100%;"
+                             Required="true" />
+
+            <FluentTextField Value="@_cnpj"
+                             ValueChanged="@(v => _cnpj = v.MaskCnpj())"
+                             Immediate="true"
+                             Label="CNPJ *"
+                             Placeholder="00.000.000/0001-00"
+                             Style="width: 100%;"
+                             Required="true"
+                             MaxLength="18" />
+
+            <FluentTextField Value="@_telefone"
+                             ValueChanged="@(v => _telefone = v.MaskTelefoneInput())"
+                             Immediate="true"
+                             Label="Telefone"
+                             Placeholder="(11) 99999-9999"
+                             Style="width: 100%;"
+                             MaxLength="16" />
+
+            <FluentTextField @bind-Value="@_email"
+                             Label="Email"
+                             Placeholder="contato@farmacia.com"
+                             Style="width: 100%;"
+                             Type="InputType.Email" />
+
+            <FluentTextField @bind-Value="@_endereco"
+                             Label="Endereço"
+                             Placeholder="Rua, número, bairro, cidade - UF"
+                             Style="width: 100%;" />
+
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="8" Style="width: 100%;">
+                <FluentLabel Typo="Typography.Body">Logo da farmácia (opcional)</FluentLabel>
+                <label for="farmacia-logo-input" style="cursor: pointer;">
+                    <InputFile id="farmacia-logo-input" accept="image/*" hidden OnChange="HandleLogoUpload" />
+                    <FluentCard Style="padding: 1rem; width: 100%; border: 1px dashed var(--neutral-stroke-rest);">
+                        @if (!string.IsNullOrWhiteSpace(_logoFileName))
+                        {
+                            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                                <FluentIcon Icon="@(Icons.Regular.Size16.Image)" />
+                                <FluentLabel>@_logoFileName</FluentLabel>
+                            </FluentStack>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(_existingLogoUrl))
+                        {
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                                <img src="@GetLogoDisplayUrl(_existingLogoUrl)"
+                                     alt="Logo atual da farmácia"
+                                     style="max-height: 48px; max-width: 100%; object-fit: contain; border-radius: 4px;"
+                                     onerror="this.style.display='none'; var fb=this.nextElementSibling; if(fb) fb.style.removeProperty('display');" />
+                                <FluentLabel Style="display:none; font-size: 0.75rem; color: var(--neutral-foreground-hint);">Logo atual</FluentLabel>
+                            </FluentStack>
+                        }
+                        else
+                        {
+                            <FluentLabel>Clique para selecionar uma imagem</FluentLabel>
+                        }
+                    </FluentCard>
+                </label>
+                @if (!string.IsNullOrWhiteSpace(_existingLogoUrl) || !string.IsNullOrWhiteSpace(_logoFileName))
+                {
+                    <FluentButton Appearance="Appearance.Outline"
+                                  @onclick="HandleRemoveLogo"
+                                  Style="width: fit-content;"
+                                  Title="Remover logo da farmácia">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Delete)" Slot="start" />
+                        Remover logo
+                    </FluentButton>
+                }
+            </FluentStack>
+
+            <FluentSelect TOption="string"
+                          @bind-Value="@_plano"
+                          Label="Plano"
+                          Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                <FluentOption TOption="string" Value="Basic">Basic</FluentOption>
+                <FluentOption TOption="string" Value="Standard">Standard</FluentOption>
+                <FluentOption TOption="string" Value="Premium">Premium</FluentOption>
+            </FluentSelect>
+
+            @if (Farmacia != null)
+            {
+                <FluentCheckbox @bind-Value="@_ativa">
+                    Farmácia ativa (desmarque para bloquear logins)
+                </FluentCheckbox>
+
+                @if (!_ativa)
+                {
+                    <FluentTextArea Value="@_motivoBloqueio"
+                                    ValueChanged="@(v => _motivoBloqueio = v ?? string.Empty)"
+                                    Immediate="true"
+                                    Label="Motivo do bloqueio *"
+                                    Placeholder="financeiro, mudou de sistema ou outro"
+                                    Style="width: 100%;"
+                                    Rows="3"
+                                    MaxLength="500" />
+                }
+            }
+
+            @if (Farmacia == null)
+            {
+                <FluentLabel Typo="Typography.Subject" Weight="FontWeight.Bold" Style="margin-top: 0.5rem;">Contato Responsável</FluentLabel>
+
+                <FluentTextField @bind-Value="@_nomeContato"
+                                 Label="Nome do Responsável *"
+                                 Placeholder="Nome completo"
+                                 Style="width: 100%;"
+                                 Required="true" />
+
+                <FluentTextField @bind-Value="@_emailContato"
+                                 Label="Email do Responsável *"
+                                 Placeholder="responsavel@farmacia.com"
+                                 Style="width: 100%;"
+                                 Required="true"
+                                 Autocomplete="off"
+                                 Type="InputType.Email" />
+
+                <FluentTextField Value="@_telefoneContato"
+                                 ValueChanged="@(v => _telefoneContato = v.MaskTelefoneInput())"
+                                 Immediate="true"
+                                 Label="Telefone do Responsável"
+                                 Placeholder="(11) 99999-9999"
+                                 Style="width: 100%;"
+                                 MaxLength="16" />
+            }
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <FluentMessageBar Intent="@MessageIntent.Error">@_errorMessage</FluentMessageBar>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="HandleCancel" Disabled="@_isSaving">
+            Cancelar
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="HandleSave" Disabled="@_isSaving">
+            @if (_isSaving)
+            {
+                <FluentProgressRing Style="width:16px; height:16px;" />
+                <span style="margin-left:0.5rem;">Salvando...</span>
+            }
+            else
+            {
+                <FluentIcon Icon="@(Icons.Regular.Size16.Save)" Color="Color.Fill" Slot="start" />
+                <span>@(Farmacia == null ? "Registrar" : "Salvar")</span>
+            }
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public FarmaciaDto? Farmacia { get; set; }
+    [Parameter] public EventCallback<(bool IsNew, CreateFarmaciaDto? Create, UpdateFarmaciaDto? Update, IBrowserFile? Logo)> OnSave { get; set; }
+
+    private FluentDialog? _dialog;
+    private string _nome = "";
+    private string _cnpj = "";
+    private string _telefone = "";
+    private string _email = "";
+    private string _endereco = "";
+    private string _nomeContato = "";
+    private string _emailContato = "";
+    private string _telefoneContato = "";
+    private string _plano = "Basic";
+    private bool _ativa = true;
+    private string _motivoBloqueio = "";
+    private IBrowserFile? _logoFile;
+    private string _logoFileName = "";
+    private string _existingLogoUrl = "";
+    private bool _removeExistingLogo = false;
+    private bool _isSaving = false;
+    private string _errorMessage = "";
+    private bool _wasVisible = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Visible && !_wasVisible)
+        {
+            if (Farmacia != null)
+            {
+                _nome = Farmacia.Nome;
+                _cnpj = Farmacia.Cnpj.MaskCnpj();
+                _telefone = (Farmacia.Telefone ?? "").MaskTelefoneInput();
+                _email = Farmacia.Email ?? "";
+                _endereco = Farmacia.Endereco ?? "";
+                _plano = Farmacia.Plano ?? "Basic";
+                _ativa = Farmacia.Ativa;
+                _motivoBloqueio = Farmacia.MotivoBloqueio ?? "";
+                _existingLogoUrl = Farmacia.LogoUrl ?? "";
+                _removeExistingLogo = false;
+                _logoFile = null;
+                _logoFileName = "";
+            }
+            else
+            {
+                _nome = "";
+                _cnpj = "";
+                _telefone = "";
+                _email = "";
+                _endereco = "";
+                _nomeContato = "";
+                _emailContato = "";
+                _telefoneContato = "";
+                _plano = "Basic";
+                _ativa = true;
+                _motivoBloqueio = "";
+                _logoFile = null;
+                _logoFileName = "";
+                _existingLogoUrl = "";
+                _removeExistingLogo = false;
+            }
+            _errorMessage = "";
+            _isSaving = false;
+        }
+        _wasVisible = Visible;
+    }
+
+    private async Task HandleSave()
+    {
+        _errorMessage = "";
+
+        if (string.IsNullOrWhiteSpace(_nome))
+        {
+            _errorMessage = "Nome da farmácia é obrigatório.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_cnpj))
+        {
+            _errorMessage = "CNPJ é obrigatório.";
+            return;
+        }
+        if (!_cnpj.IsValidCnpj())
+        {
+            _errorMessage = "CNPJ inválido. Verifique os dígitos e tente novamente.";
+            return;
+        }
+        if (Farmacia == null && string.IsNullOrWhiteSpace(_nomeContato))
+        {
+            _errorMessage = "Nome do responsável é obrigatório.";
+            return;
+        }
+        if (Farmacia == null && string.IsNullOrWhiteSpace(_emailContato))
+        {
+            _errorMessage = "Email do responsável é obrigatório.";
+            return;
+        }
+        if (Farmacia != null && !_ativa && string.IsNullOrWhiteSpace(_motivoBloqueio))
+        {
+            _errorMessage = "Informe o motivo do bloqueio para desativar a farmácia.";
+            return;
+        }
+
+        _isSaving = true;
+
+        try
+        {
+            if (Farmacia == null)
+            {
+                var dto = new CreateFarmaciaDto
+                {
+                    Nome = _nome.Trim(),
+                    Cnpj = _cnpj.SanitizeDigits(14),
+                    Telefone = string.IsNullOrWhiteSpace(_telefone) ? null : _telefone.SanitizeDigits(11),
+                    Email = string.IsNullOrWhiteSpace(_email) ? null : _email.Trim(),
+                    Endereco = string.IsNullOrWhiteSpace(_endereco) ? null : _endereco.Trim(),
+                    NomeContato = _nomeContato.Trim(),
+                    EmailContato = _emailContato.Trim(),
+                    TelefoneContato = string.IsNullOrWhiteSpace(_telefoneContato) ? null : _telefoneContato.SanitizeDigits(11),
+                    LogoUrl = null,
+                    Plano = _plano
+                };
+                await OnSave.InvokeAsync((true, dto, null, _logoFile));
+            }
+            else
+            {
+                var dto = new UpdateFarmaciaDto
+                {
+                    Nome = _nome.Trim(),
+                    Cnpj = _cnpj.SanitizeDigits(14),
+                    Telefone = string.IsNullOrWhiteSpace(_telefone) ? null : _telefone.SanitizeDigits(11),
+                    Email = string.IsNullOrWhiteSpace(_email) ? null : _email.Trim(),
+                     Endereco = string.IsNullOrWhiteSpace(_endereco) ? null : _endereco.Trim(),
+                     LogoUrl = _removeExistingLogo ? "" : null,
+                     Plano = _plano,
+                     Ativa = _ativa,
+                     MotivoBloqueio = _ativa ? null : _motivoBloqueio.Trim()
+                 };
+                await OnSave.InvokeAsync((false, null, dto, _logoFile));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Unexpected error saving farmácia");
+            _errorMessage = "Erro inesperado ao salvar farmácia. Por favor, tente novamente ou contate o suporte.";
+            _isSaving = false;
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private void HandleRemoveLogo()
+    {
+        _logoFile = null;
+        _logoFileName = "";
+        _existingLogoUrl = "";
+        _removeExistingLogo = true;
+        _errorMessage = "";
+    }
+
+    private void HandleLogoUpload(InputFileChangeEventArgs e)
+    {
+        _errorMessage = "";
+        var file = e.File;
+        if (file == null)
+        {
+            _logoFile = null;
+            _logoFileName = "";
+            return;
+        }
+
+        if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            _logoFile = null;
+            _logoFileName = "";
+            _errorMessage = "Selecione um arquivo de imagem válido para a logo.";
+            return;
+        }
+
+        if (file.Size > 5 * 1024 * 1024)
+        {
+            _logoFile = null;
+            _logoFileName = "";
+            _errorMessage = "A logo deve ter no máximo 5MB.";
+            return;
+        }
+
+        _logoFile = file;
+        _logoFileName = file.Name;
+    }
+
+    // ── Logo URL helpers ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds the proxy URL for displaying an existing logo.
+    /// Images are served through the Web server's /logo-proxy endpoint so the browser
+    /// never needs to trust the API's dev certificate (fixes image loading on Linux/Fedora).
+    /// </summary>
+    private static string GetLogoDisplayUrl(string? logoUrl)
+    {
+        if (string.IsNullOrWhiteSpace(logoUrl)) return "";
+        var pathPart = logoUrl.Split('?')[0];
+        var fileName = Path.GetFileName(pathPart);
+        return string.IsNullOrWhiteSpace(fileName) ? "" : $"/logo-proxy/{Uri.EscapeDataString(fileName)}";
+    }
+
+    // ── Input mask helpers ────────────────────────────────────────────────
+
+    /// <summary>
+    /// Formats a raw string as CNPJ: XX.XXX.XXX/XXXX-XX
+    /// </summary>
+}

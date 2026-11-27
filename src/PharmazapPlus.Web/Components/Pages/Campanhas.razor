@@ -1,0 +1,776 @@
+@page "/campanhas"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@attribute [Authorize(Roles = $"{UserRoles.Administrador},{UserRoles.Gestor}")]
+@implements IDisposable
+
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+@inject ILogger<Campanhas> Logger
+@inject IPharmazapApiService PharmazapApiService
+@inject IToastService ToastService
+
+<PageTitle>Campanhas - Pharmazap Plus</PageTitle>
+
+<div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">
+    @if (CurrentUser != null)
+    {
+        <!-- Header -->
+        <div style="flex-shrink: 0; width: 100%;">
+            <FluentCard Style="padding: 1rem 2rem; border-radius: 0; width: 100%;">
+                <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="width: 100%;">
+                    <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="12" Style="flex: 1; min-width: 0;">
+                        <FluentIcon Icon="@(Icons.Regular.Size32.Send)" Color="Color.Accent" />
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="2" Style="min-width: 0;">
+                            <FluentLabel Typo="Typography.PageTitle">Campanhas de Mensagens</FluentLabel>
+                            <FluentLabel Typo="Typography.Body">Crie e agende disparos automáticos de mensagens para seus clientes</FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" Style="margin-left: auto; flex-shrink: 0; width: auto;">
+                        <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovaCampanha">
+                            <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Slot="start" Color="Color.Fill" />
+                            Nova Campanha
+                        </FluentButton>
+                    </FluentStack>
+                </FluentStack>
+            </FluentCard>
+        </div>
+
+        <!-- Content -->
+        <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+
+            <!-- Stats cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem;">
+                <FluentCard Style="padding: 1rem; text-align: center;">
+                    <FluentLabel Typo="Typography.H4" Style="color: var(--neutral-foreground-rest);">@_campanhas.Count</FluentLabel>
+                    <FluentLabel Style="color: var(--neutral-foreground-hint);">Total</FluentLabel>
+                </FluentCard>
+                <FluentCard Style="padding: 1rem; text-align: center;">
+                    <FluentLabel Typo="Typography.H4" Style="color: var(--accent-foreground-rest);">@_campanhas.Count(c => c.Status == CampanhaStatusEnum.Agendada)</FluentLabel>
+                    <FluentLabel Style="color: var(--neutral-foreground-hint);">Agendadas</FluentLabel>
+                </FluentCard>
+                <FluentCard Style="padding: 1rem; text-align: center;">
+                    <FluentLabel Typo="Typography.H4" Style="color: #107C10;">@_campanhas.Count(c => c.Status == CampanhaStatusEnum.Concluida)</FluentLabel>
+                    <FluentLabel Style="color: var(--neutral-foreground-hint);">Concluídas</FluentLabel>
+                </FluentCard>
+                <FluentCard Style="padding: 1rem; text-align: center;">
+                    <FluentLabel Typo="Typography.H4" Style="color: var(--neutral-foreground-rest);">@_campanhas.Count(c => c.Status == CampanhaStatusEnum.Rascunho)</FluentLabel>
+                    <FluentLabel Style="color: var(--neutral-foreground-hint);">Rascunhos</FluentLabel>
+                </FluentCard>
+            </div>
+
+            @if (_loading)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                    <FluentProgressRing />
+                    <FluentLabel>Carregando campanhas...</FluentLabel>
+                </FluentStack>
+            }
+            else if (_campanhas.Count == 0)
+            {
+                <FluentCard Style="padding: 3rem; text-align: center;">
+                    <FluentIcon Icon="@(Icons.Regular.Size48.Send)" Style="color: var(--neutral-foreground-hint); margin-bottom: 1rem;" />
+                    <FluentLabel Typo="Typography.H5" Style="display: block; margin-bottom: 0.5rem;">Nenhuma campanha cadastrada</FluentLabel>
+                    <FluentLabel Style="color: var(--neutral-foreground-hint); display: block; margin-bottom: 1.5rem;">
+                        Crie sua primeira campanha para enviar mensagens automáticas aos seus clientes.
+                    </FluentLabel>
+                    <FluentButton Appearance="Appearance.Accent" @onclick="ShowNovaCampanha">
+                        <FluentIcon Icon="@(Icons.Regular.Size16.Add)" Slot="start" Color="Color.Fill" />
+                        Criar Primeira Campanha
+                    </FluentButton>
+                </FluentCard>
+            }
+            else
+            {
+                <FluentDataGrid Items="@_campanhasQueryable"
+                                GridTemplateColumns="2fr auto 1fr auto auto auto"
+                                Style="width: 100%;">
+                    <PropertyColumn Title="Nome" Property="@(c => c.Nome)" Sortable="true" />
+                    <TemplateColumn Title="Tipo">
+                        @context.Tipo switch
+                        {
+                            CampanhaTipoEnum.Promocional => <FluentBadge Appearance="Appearance.Accent">Promocional</FluentBadge>,
+                            CampanhaTipoEnum.UsoContinuo => <FluentBadge Appearance="Appearance.Neutral">Uso Contínuo</FluentBadge>,
+                            CampanhaTipoEnum.Informativo => <FluentBadge Appearance="Appearance.Neutral">Informativo</FluentBadge>,
+                            CampanhaTipoEnum.Lembrete    => <FluentBadge Appearance="Appearance.Neutral">Lembrete</FluentBadge>,
+                            _                            => <span>@context.Tipo</span>
+                        }
+                    </TemplateColumn>
+                    <TemplateColumn Title="Status">
+                        @GetStatusBadge(context)
+                    </TemplateColumn>
+                    <TemplateColumn Title="Agendamento">
+                        @if (context.DataAgendamento.HasValue)
+                        {
+                            <span>@context.DataAgendamento.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                        }
+                        else if (context.Status == CampanhaStatusEnum.Agendada)
+                        {
+                            <FluentLabel Style="color: var(--neutral-foreground-hint);">Disparo imediato</FluentLabel>
+                        }
+                        else
+                        {
+                            <FluentLabel Style="color: var(--neutral-foreground-hint);">—</FluentLabel>
+                        }
+                    </TemplateColumn>
+                    <TemplateColumn Title="Resultado">
+                        @if (context.Status is CampanhaStatusEnum.Concluida or CampanhaStatusEnum.ComErro)
+                        {
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
+                                <FluentLabel>✅ @context.TotalEnviados enviados</FluentLabel>
+                                @if (context.TotalErros > 0)
+                                {
+                                    <FluentLabel Style="color: var(--error-foreground);">❌ @context.TotalErros erros</FluentLabel>
+                                }
+                            </FluentStack>
+                        }
+                        else if (context.TotalDestinatarios > 0)
+                        {
+                            <FluentLabel Style="color: var(--neutral-foreground-hint);">@context.TotalDestinatarios destinatários</FluentLabel>
+                        }
+                        else
+                        {
+                            <FluentLabel Style="color: var(--neutral-foreground-hint);">—</FluentLabel>
+                        }
+                    </TemplateColumn>
+                    <TemplateColumn Title="Ações">
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="4">
+                            @if (context.Status == CampanhaStatusEnum.Rascunho)
+                            {
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Title="Editar"
+                                              @onclick="@(() => ShowEditarCampanha(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Edit)" />
+                                </FluentButton>
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Title="Agendar / Executar"
+                                              @onclick="@(() => ShowAgendarCampanha(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.CalendarAdd)" />
+                                </FluentButton>
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Title="Excluir"
+                                              @onclick="@(() => ConfirmarExcluir(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Delete)" Style="color: var(--error-foreground);" />
+                                </FluentButton>
+                            }
+                            else if (context.Status == CampanhaStatusEnum.Agendada)
+                            {
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Title="Executar agora"
+                                              @onclick="@(() => ExecutarAgora(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Play)" />
+                                </FluentButton>
+                                <FluentButton Appearance="Appearance.Stealth"
+                                              Title="Cancelar"
+                                              @onclick="@(() => ConfirmarCancelar(context))">
+                                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" Style="color: var(--error-foreground);" />
+                                </FluentButton>
+                            }
+                        </FluentStack>
+                    </TemplateColumn>
+                </FluentDataGrid>
+            }
+        </div>
+    }
+</div>
+
+<!-- ── Dialog: Nova / Editar Campanha ── -->
+<FluentDialog Modal="true" Hidden="@(!_showForm)" TrapFocus="true"
+              @ondialogdismiss="CloseForm" Style="width: min(700px, 95vw);">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                     HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Send)" />
+                <FluentLabel Typo="Typography.Subject">@(_editandoCampanha ? "Editar Campanha" : "Nova Campanha")</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseForm" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody Style="overflow: visible;">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 1rem 0; overflow: visible; position: relative; z-index: 30;">
+            <FluentTextField @bind-Value="_formNome"
+                             Label="Nome da Campanha *"
+                             Placeholder="Ex: Promoção de Inverno, Lembrete Uso Contínuo..."
+                             Style="width: 100%;"
+                             MaxLength="200" />
+
+            <div style="display: flex; flex-direction: column; gap: 4px; width: 100%; overflow: visible; position: relative; z-index: 30;">
+                <label style="font-size: 0.875rem; font-weight: 600;">Tipo da Campanha *</label>
+                <FluentSelect TOption="CampanhaTipoEnum"
+                              @bind-SelectedOption="_formTipo"
+                              Style="width: 100%; position: relative; z-index: 30; overflow: visible;">
+                    <FluentOption TOption="CampanhaTipoEnum" Value="@nameof(CampanhaTipoEnum.Promocional)">📢 Promocional (promoções e ofertas)</FluentOption>
+                    <FluentOption TOption="CampanhaTipoEnum" Value="@nameof(CampanhaTipoEnum.UsoContinuo)">💊 Uso Contínuo (lembretes de medicamentos)</FluentOption>
+                    <FluentOption TOption="CampanhaTipoEnum" Value="@nameof(CampanhaTipoEnum.Informativo)">ℹ️ Informativo (dicas de saúde, novidades)</FluentOption>
+                    <FluentOption TOption="CampanhaTipoEnum" Value="@nameof(CampanhaTipoEnum.Lembrete)">🔔 Lembrete (consulta, retorno, evento)</FluentOption>
+                </FluentSelect>
+            </div>
+
+            <FluentCard Style="padding: 1rem;">
+                <FluentLabel Typo="Typography.Subject" Style="display: block; margin-bottom: 0.5rem;">🏷️ Filtro por Etiqueta</FluentLabel>
+                <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.8rem; display: block; margin-bottom: 0.75rem;">
+                    Selecione as etiquetas dos clientes que devem receber a campanha. Sem seleção = sem filtro por etiqueta.
+                </FluentLabel>
+                @if (_etiquetasLoading)
+                {
+                    <FluentProgressRing Style="width: 20px; height: 20px;" />
+                }
+                else if (_etiquetas.Count == 0)
+                {
+                    <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.8rem;">
+                        Nenhuma etiqueta cadastrada.
+                    </FluentLabel>
+                }
+                else
+                {
+                    <div style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto;">
+                        <FluentCheckbox Value="@(_formEtiquetaIds.Count == 0)"
+                                        ValueChanged="@OnToggleTodasEtiquetas"
+                                        Label="Todas as etiquetas (sem filtro)" />
+                        @foreach (var etiqueta in _etiquetas)
+                        {
+                            var etiquetaId = etiqueta.Id;
+                            <FluentCheckbox Value="@(_formEtiquetaIds.Contains(etiquetaId))"
+                                            ValueChanged="@((v) => OnToggleEtiqueta(etiquetaId, v))">
+                                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8"
+                                             VerticalAlignment="VerticalAlignment.Center">
+                                    <div style="width: 12px; height: 12px; border-radius: 50%; background-color: @etiqueta.Cor; flex-shrink: 0;"></div>
+                                    <span>@etiqueta.Nome</span>
+                                </FluentStack>
+                            </FluentCheckbox>
+                        }
+                    </div>
+                }
+            </FluentCard>
+
+            <div style="display: flex; flex-direction: column; gap: 4px; width: 100%;">
+                <label style="font-size: 0.875rem; font-weight: 600;">Mensagem *</label>
+                <FluentTextArea Value="@_formMensagem"
+                                ValueChanged="@OnMensagemChanged"
+                                Immediate="true"
+                                Placeholder="Digite a mensagem que será enviada aos clientes..."
+                                Style="width: 100%; min-height: 180px; max-width: 100%;"
+                                MaxLength="2000" Rows="8" />
+                <FluentLabel Style="color: var(--neutral-foreground-hint); font-size: 0.75rem;">
+                    @(_formMensagem?.Length ?? 0)/2000 caracteres
+                </FluentLabel>
+            </div>
+
+            <FluentCard Style="padding: 1rem;">
+                <FluentLabel Typo="Typography.Subject" Style="display: block; margin-bottom: 0.75rem;">Destinatários</FluentLabel>
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                    <FluentCheckbox @bind-Value="_formEnviarTodosAtivos" Label="Enviar para todos os clientes ativos" />
+                    @if (!_formEnviarTodosAtivos)
+                    {
+                        <FluentCheckbox @bind-Value="_formEnviarUsoContinuo" Label="Somente clientes com Uso Contínuo (medicamentos contínuos)" />
+                    }
+                    <FluentCheckbox @bind-Value="_formEnviarAceitaMarketing" Label="Respeitar preferência de marketing dos clientes" />
+                </FluentStack>
+                @if (!_formEnviarTodosAtivos && !_formEnviarUsoContinuo)
+                {
+                    <FluentLabel Style="color: var(--warning-foreground, #CA5010); font-size: 0.8rem; margin-top: 8px; display: block;">
+                        ⚠️ Selecione ao menos um grupo de destinatários
+                    </FluentLabel>
+                }
+            </FluentCard>
+
+            <FluentTextField @bind-Value="_formObservacoes"
+                             Label="Observações"
+                             Placeholder="Observações internas (opcional)"
+                             Style="width: 100%;"
+                             MaxLength="500" />
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseForm">Cancelar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      @onclick="SalvarCampanha"
+                      Disabled="@(!FormValido)">
+            <FluentIcon Icon="@(Icons.Regular.Size16.Save)" Slot="start" Color="Color.Fill" />
+            <span>@(_editandoCampanha ? "Salvar Alterações" : "Criar Campanha")</span>
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- ── Dialog: Agendar ── -->
+<FluentDialog Modal="true" Hidden="@(!_showAgendar)" TrapFocus="true"
+              @ondialogdismiss="CloseAgendar" Style="width: min(480px, 95vw);">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                     HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.CalendarAdd)" />
+                <FluentLabel Typo="Typography.Subject">Agendar Campanha</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseAgendar" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" Style="padding: 1rem 0;">
+            <FluentLabel>Campanha: <strong>@_campanhaSelecionada?.Nome</strong></FluentLabel>
+
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label style="font-size: 0.875rem; font-weight: 600;">Quando disparar?</label>
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                    <FluentCheckbox @bind-Value="_agendarImediato" Label="Disparar imediatamente ao confirmar" />
+                    @if (!_agendarImediato)
+                    {
+                        <FluentDatePicker @bind-Value="_agendarData"
+                                          Label="Data de Agendamento"
+                                          Style="width: 100%;" />
+                        <FluentTimePicker @bind-Value="_agendarHora"
+                                          Label="Horário de Disparo"
+                                          Style="width: 100%;" />
+                    }
+                </FluentStack>
+            </div>
+
+            <FluentCard Style="padding: 1rem; background: var(--neutral-layer-2);">
+                <FluentLabel Style="font-size: 0.85rem; color: var(--neutral-foreground-hint);">
+                    ℹ️ O disparo será processado automaticamente pelo sistema. Certifique-se que a integração com WhatsApp está configurada corretamente.
+                </FluentLabel>
+            </FluentCard>
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseAgendar">Cancelar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ConfirmarAgendar">
+            <FluentIcon Icon="@(Icons.Regular.Size16.CalendarAdd)" Slot="start" Color="Color.Fill" />
+            <span>@(_agendarImediato ? "Executar Agora" : "Agendar")</span>
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- ── Dialog: Confirmar Excluir ── -->
+<FluentDialog Modal="true" Hidden="@(!_showConfirmExcluir)" TrapFocus="true"
+              @ondialogdismiss="CloseConfirmExcluir" Style="width: min(420px, 95vw);">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                     HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Delete)" Style="color: var(--error-foreground);" />
+                <FluentLabel Typo="Typography.Subject">Excluir Campanha</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseConfirmExcluir" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentLabel Style="padding: 1rem 0; display: block;">
+            Deseja excluir a campanha <strong>@_campanhaSelecionada?.Nome</strong>? Esta ação não pode ser desfeita.
+        </FluentLabel>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseConfirmExcluir">Cancelar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ExecutarExcluir"
+                      Style="background: var(--error-foreground, #D13438);">
+            <FluentIcon Icon="@(Icons.Regular.Size16.Delete)" Slot="start" Color="Color.Fill" />
+            <span>Excluir</span>
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- ── Dialog: Confirmar Cancelar ── -->
+<FluentDialog Modal="true" Hidden="@(!_showConfirmCancelar)" TrapFocus="true"
+              @ondialogdismiss="CloseConfirmCancelar" Style="width: min(420px, 95vw);">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center"
+                     HorizontalGap="8" Style="width:100%">
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                <FluentLabel Typo="Typography.Subject">Cancelar Campanha</FluentLabel>
+            </FluentStack>
+            <div style="margin-left:auto;">
+                <FluentButton Appearance="Appearance.Stealth" @onclick="CloseConfirmCancelar" aria-label="Fechar" Title="Fechar">
+                    <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" />
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentLabel Style="padding: 1rem 0; display: block;"><!--
+            Deseja cancelar a campanha <strong>@_campanhaSelecionada?.Nome</strong>?-->
+        </FluentLabel>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Outline" @onclick="CloseConfirmCancelar">Voltar</FluentButton>
+        <FluentButton Appearance="Appearance.Accent" @onclick="ExecutarCancelar">
+            <FluentIcon Icon="@(Icons.Regular.Size16.Dismiss)" Slot="start" Color="Color.Fill" />
+            <span>Cancelar Campanha</span>
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    private UserInfo? CurrentUser;
+    private bool _loading = true;
+    private bool _disposed;
+
+    private List<Campanha> _campanhas = new();
+    private IQueryable<Campanha>? _campanhasQueryable;
+
+    // Form state
+    private bool _showForm;
+    private bool _editandoCampanha;
+    private Campanha? _campanhaSelecionada;
+    private string _formNome = "";
+    private string _formMensagem = "";
+    private CampanhaTipoEnum _formTipo = CampanhaTipoEnum.Promocional;
+    private bool _formEnviarTodosAtivos;
+    private bool _formEnviarUsoContinuo;
+    private bool _formEnviarAceitaMarketing = true;
+    private string? _formObservacoes;
+    private HashSet<int> _formEtiquetaIds = new();
+
+    // Etiquetas state
+    private List<EtiquetaDto> _etiquetas = new();
+    private bool _etiquetasLoading;
+
+    // Agendar state
+    private bool _showAgendar;
+    private bool _agendarImediato = true;
+    private DateTime? _agendarData;
+    private DateTime? _agendarHora;
+
+    // Confirm dialogs
+    private bool _showConfirmExcluir;
+    private bool _showConfirmCancelar;
+
+    private bool FormValido =>
+        !string.IsNullOrWhiteSpace(_formNome) &&
+        !string.IsNullOrWhiteSpace(_formMensagem) &&
+        (_formEnviarTodosAtivos || _formEnviarUsoContinuo);
+
+    private void OnMensagemChanged(string? value)
+    {
+        _formMensagem = value ?? string.Empty;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        CurrentUser = await AuthService.GetUserInfo();
+        if (CurrentUser == null)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
+
+        await Task.WhenAll(LoadCampanhas(), LoadEtiquetas());
+    }
+
+    private async Task LoadCampanhas()
+    {
+        if (_disposed) return;
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _campanhas = await PharmazapApiService.GetCampanhasAsync();
+            _campanhasQueryable = _campanhas.AsQueryable();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao carregar campanhas");
+        }
+        finally
+        {
+            _loading = false;
+            if (!_disposed) StateHasChanged();
+        }
+    }
+
+    private async Task LoadEtiquetas()
+    {
+        if (_disposed) return;
+        _etiquetasLoading = true;
+        try
+        {
+            _etiquetas = await PharmazapApiService.GetEtiquetasAsync(ativo: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Erro ao carregar etiquetas");
+        }
+        finally
+        {
+            _etiquetasLoading = false;
+            if (!_disposed) StateHasChanged();
+        }
+    }
+
+    private void OnToggleEtiqueta(int etiquetaId, bool selected)
+    {
+        if (selected)
+            _formEtiquetaIds.Add(etiquetaId);
+        else
+            _formEtiquetaIds.Remove(etiquetaId);
+    }
+
+    private void OnToggleTodasEtiquetas(bool value)
+    {
+        if (value)
+            _formEtiquetaIds.Clear();
+    }
+
+    // ── Form ──────────────────────────────────────────────────────────
+
+    private void ShowNovaCampanha()
+    {
+        _editandoCampanha = false;
+        _campanhaSelecionada = null;
+        _formNome = "";
+        _formMensagem = "";
+        _formTipo = CampanhaTipoEnum.Promocional;
+        _formEnviarTodosAtivos = false;
+        _formEnviarUsoContinuo = false;
+        _formEnviarAceitaMarketing = true;
+        _formObservacoes = null;
+        _formEtiquetaIds = new HashSet<int>();
+        _showForm = true;
+    }
+
+    private void ShowEditarCampanha(Campanha campanha)
+    {
+        _editandoCampanha = true;
+        _campanhaSelecionada = campanha;
+        _formNome = campanha.Nome;
+        _formMensagem = campanha.Mensagem;
+        _formTipo = campanha.Tipo;
+        _formEnviarTodosAtivos = campanha.EnviarParaTodosAtivos;
+        _formEnviarUsoContinuo = campanha.EnviarParaUsoContinuo;
+        _formEnviarAceitaMarketing = campanha.EnviarParaAceitaMarketing;
+        _formObservacoes = campanha.Observacoes;
+        _formEtiquetaIds = new HashSet<int>(campanha.EtiquetaIds ?? new List<int>());
+        _showForm = true;
+    }
+
+    private void CloseForm()
+    {
+        _showForm = false;
+        StateHasChanged();
+    }
+
+    private async Task SalvarCampanha()
+    {
+        if (!FormValido) return;
+
+        if (_editandoCampanha && _campanhaSelecionada != null)
+        {
+            var dto = new UpdateCampanhaDto
+            {
+                Nome = _formNome.Trim(),
+                Mensagem = _formMensagem.Trim(),
+                Tipo = _formTipo,
+                EnviarParaTodosAtivos = _formEnviarTodosAtivos,
+                EnviarParaUsoContinuo = _formEnviarUsoContinuo,
+                EnviarParaAceitaMarketing = _formEnviarAceitaMarketing,
+                Observacoes = _formObservacoes?.Trim(),
+                EtiquetaIds = _formEtiquetaIds.Count > 0 ? _formEtiquetaIds.ToList() : null
+            };
+            var (success, message) = await PharmazapApiService.UpdateCampanhaAsync(_campanhaSelecionada.Id, dto);
+            if (success)
+            {
+                ToastService.ShowSuccess("Campanha atualizada com sucesso!");
+                _showForm = false;
+                await LoadCampanhas();
+            }
+            else
+            {
+                ToastService.ShowError(message ?? "Erro ao atualizar campanha");
+            }
+        }
+        else
+        {
+            var dto = new CreateCampanhaDto
+            {
+                Nome = _formNome.Trim(),
+                Mensagem = _formMensagem.Trim(),
+                Tipo = _formTipo,
+                EnviarParaTodosAtivos = _formEnviarTodosAtivos,
+                EnviarParaUsoContinuo = _formEnviarUsoContinuo,
+                EnviarParaAceitaMarketing = _formEnviarAceitaMarketing,
+                Observacoes = _formObservacoes?.Trim(),
+                EtiquetaIds = _formEtiquetaIds.Count > 0 ? _formEtiquetaIds.ToList() : null
+            };
+            var (success, message, _) = await PharmazapApiService.CreateCampanhaAsync(dto);
+            if (success)
+            {
+                ToastService.ShowSuccess("Campanha criada com sucesso!");
+                _showForm = false;
+                await LoadCampanhas();
+            }
+            else
+            {
+                ToastService.ShowError(message ?? "Erro ao criar campanha");
+            }
+        }
+    }
+
+    // ── Agendar ─────────────────────────────────────────────────────────
+
+    private void ShowAgendarCampanha(Campanha campanha)
+    {
+        _campanhaSelecionada = campanha;
+        _agendarImediato = true;
+        _agendarData = null;
+        _agendarHora = null;
+        _showAgendar = true;
+    }
+
+    private void CloseAgendar()
+    {
+        _showAgendar = false;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmarAgendar()
+    {
+        if (_campanhaSelecionada == null) return;
+
+        if (_agendarImediato)
+        {
+            // Agendar para disparo imediato (DataAgendamento = null → worker processa na próxima iteração)
+            var (success, message) = await PharmazapApiService.AgendarCampanhaAsync(_campanhaSelecionada.Id, null);
+            if (success)
+            {
+                ToastService.ShowSuccess("Campanha agendada para disparo imediato!");
+                _showAgendar = false;
+                await LoadCampanhas();
+            }
+            else
+            {
+                ToastService.ShowError(message ?? "Erro ao agendar campanha");
+            }
+        }
+        else
+        {
+            if (!_agendarData.HasValue)
+            {
+                ToastService.ShowWarning("Informe a data de agendamento.");
+                return;
+            }
+
+            var agendamentoHora = _agendarHora ?? DateTime.Today;
+            var dataAgendamento = new DateTime(
+                _agendarData.Value.Year, _agendarData.Value.Month, _agendarData.Value.Day,
+                agendamentoHora.Hour, agendamentoHora.Minute, 0,
+                DateTimeKind.Local).ToUniversalTime();
+
+            var (success, message) = await PharmazapApiService.AgendarCampanhaAsync(_campanhaSelecionada.Id, dataAgendamento);
+            if (success)
+            {
+                ToastService.ShowSuccess($"Campanha agendada para {dataAgendamento.ToLocalTime():dd/MM/yyyy HH:mm}!");
+                _showAgendar = false;
+                await LoadCampanhas();
+            }
+            else
+            {
+                ToastService.ShowError(message ?? "Erro ao agendar campanha");
+            }
+        }
+    }
+
+    private async Task ExecutarAgora(Campanha campanha)
+    {
+        var (success, message) = await PharmazapApiService.ExecutarCampanhaAsync(campanha.Id);
+        if (success)
+        {
+            ToastService.ShowSuccess("Campanha sendo executada!");
+            await LoadCampanhas();
+        }
+        else
+        {
+            ToastService.ShowError(message ?? "Erro ao executar campanha");
+        }
+    }
+
+    // ── Excluir ─────────────────────────────────────────────────────────
+
+    private void ConfirmarExcluir(Campanha campanha)
+    {
+        _campanhaSelecionada = campanha;
+        _showConfirmExcluir = true;
+    }
+
+    private void CloseConfirmExcluir()
+    {
+        _showConfirmExcluir = false;
+        StateHasChanged();
+    }
+
+    private async Task ExecutarExcluir()
+    {
+        if (_campanhaSelecionada == null) return;
+        var (success, message) = await PharmazapApiService.DeleteCampanhaAsync(_campanhaSelecionada.Id);
+        if (success)
+        {
+            ToastService.ShowSuccess("Campanha excluída com sucesso!");
+            _showConfirmExcluir = false;
+            await LoadCampanhas();
+        }
+        else
+        {
+            ToastService.ShowError(message ?? "Erro ao excluir campanha");
+        }
+    }
+
+    // ── Cancelar ─────────────────────────────────────────────────────────
+
+    private void ConfirmarCancelar(Campanha campanha)
+    {
+        _campanhaSelecionada = campanha;
+        _showConfirmCancelar = true;
+    }
+
+    private void CloseConfirmCancelar()
+    {
+        _showConfirmCancelar = false;
+        StateHasChanged();
+    }
+
+    private async Task ExecutarCancelar()
+    {
+        if (_campanhaSelecionada == null) return;
+        var (success, message) = await PharmazapApiService.CancelarCampanhaAsync(_campanhaSelecionada.Id);
+        if (success)
+        {
+            ToastService.ShowSuccess("Campanha cancelada!");
+            _showConfirmCancelar = false;
+            await LoadCampanhas();
+        }
+        else
+        {
+            ToastService.ShowError(message ?? "Erro ao cancelar campanha");
+        }
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────
+
+    private RenderFragment GetStatusBadge(Campanha campanha) => campanha.Status switch
+    {
+        CampanhaStatusEnum.Rascunho   => @<FluentBadge Appearance="Appearance.Neutral">Rascunho</FluentBadge>,
+        CampanhaStatusEnum.Agendada   => @<FluentBadge Appearance="Appearance.Accent">Agendada</FluentBadge>,
+        CampanhaStatusEnum.Executando => @<FluentBadge Appearance="Appearance.Accent">Executando...</FluentBadge>,
+        CampanhaStatusEnum.Concluida  => @<FluentBadge Appearance="Appearance.Neutral" Style="background: #107C10; color: white;">Concluída</FluentBadge>,
+        CampanhaStatusEnum.Cancelada  => @<FluentBadge Appearance="Appearance.Neutral">Cancelada</FluentBadge>,
+        CampanhaStatusEnum.ComErro    => @<FluentBadge Appearance="Appearance.Neutral" Style="background: var(--error-foreground, #D13438); color: white;">Com Erro</FluentBadge>,
+        _                             => @<FluentBadge Appearance="Appearance.Neutral">@campanha.Status</FluentBadge>
+    };
+
+    public void Dispose() => _disposed = true;
+}

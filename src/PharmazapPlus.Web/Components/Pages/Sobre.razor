@@ -1,0 +1,54 @@
+@page "/sobre"
+
+<PageTitle>Sobre - Pharmazap Plus</PageTitle>
+
+<div style="display: flex; align-items: center; justify-content: center; min-height: 80vh; padding: 2rem;">
+    <FluentCard Style="max-width: 480px; width: 100%; padding: 2.5rem; text-align: center;">
+
+        <!-- Avatar / Logo -->
+        <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 1.5rem;">
+            <div style="width: 80px; height: 80px; border-radius: 50%; background: var(--accent-fill-rest); display: flex; align-items: center; justify-content: center;">
+                <FluentIcon Icon="@(Icons.Regular.Size48.Info)" Color="Color.Fill" />
+            </div>
+        </div>
+
+        <!-- App name -->
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="4" HorizontalAlignment="HorizontalAlignment.Center" Style="margin-bottom: 1.5rem;">
+            <FluentLabel Typo="Typography.PageTitle">Pharmazap Plus</FluentLabel>
+            <FluentLabel Style="color: var(--neutral-foreground-hint);">Plataforma de Atendimento para Farmácias via WhatsApp</FluentLabel>
+        </FluentStack>
+
+        <div style="border-top: 1px solid var(--neutral-stroke-divider-rest); margin: 1.5rem 0;"></div>
+
+        <!-- Developer info -->
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16" HorizontalAlignment="HorizontalAlignment.Center">
+
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="10">
+                <FluentIcon Value="@(new Icons.Regular.Size20.Person())" Color="Color.Accent" />
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
+                    <FluentLabel Style="font-size: 0.75rem; color: var(--neutral-foreground-hint);">Desenvolvedor</FluentLabel>
+                    <FluentLabel Style="font-weight: 600;">Leandro Khalil Peixoto</FluentLabel>
+                </FluentStack>
+            </FluentStack>
+
+            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="10">
+                <FluentIcon Value="@(new Icons.Regular.Size20.Mail())" Color="Color.Accent" />
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="2">
+                    <FluentLabel Style="font-size: 0.75rem; color: var(--neutral-foreground-hint);">E-mail</FluentLabel>
+                    <a href="mailto:khalilpdev@gmail.com"
+                       style="color: var(--accent-foreground-rest); text-decoration: none; font-weight: 500;">
+                        khalilpdev@gmail.com
+                    </a>
+                </FluentStack>
+            </FluentStack>
+
+        </FluentStack>
+
+        <div style="border-top: 1px solid var(--neutral-stroke-divider-rest); margin: 1.5rem 0;"></div>
+
+        <FluentLabel Style="font-size: 0.8rem; color: var(--neutral-foreground-hint);">
+            &copy; @DateTime.Now.Year Pharmazap Plus. Todos os direitos reservados.
+        </FluentLabel>
+
+    </FluentCard>
+</div>
